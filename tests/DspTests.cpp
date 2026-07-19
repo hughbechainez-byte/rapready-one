@@ -167,7 +167,7 @@ class ScopedTestDirectory final
 
 bool writeMonoWavFixture(const juce::File& file, int sampleCount)
 {
-    auto stream = file.createOutputStream();
+    std::unique_ptr<juce::OutputStream> stream = file.createOutputStream();
     if (stream == nullptr)
         return false;
 
