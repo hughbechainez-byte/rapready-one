@@ -65,6 +65,9 @@ jobs:
           codesign --force --deep --sign - "$component"
           codesign --force --deep --sign - "$vst3"
           codesign --force --deep --sign - "$standalone"
+          codesign --verify --deep --strict "$component"
+          codesign --verify --deep --strict "$vst3"
+          codesign --verify --deep --strict "$standalone"
           mkdir -p "$HOME/Library/Audio/Plug-Ins/Components"
           ditto "$component" "$HOME/Library/Audio/Plug-Ins/Components/$(basename "$component")"
           killall -9 AudioComponentRegistrar 2>/dev/null || true

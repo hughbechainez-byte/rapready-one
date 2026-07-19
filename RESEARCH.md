@@ -33,7 +33,6 @@ An aggressive universal preset can remove the fundamental of a deep voice, thin 
 - Knob zero equals a latency-matched dry signal.
 - Stereo-linked dynamics preserve channel balance.
 - Automation is smoothed and audio processing allocates no memory.
-- Safety ceiling holds for sample peaks; no claim of true-peak conformance without an independent oversampled meter.
+- Safety ceiling holds for sample peaks once the near-zero bypass crossfade is fully engaged; no claim of true-peak conformance without an independent oversampled meter.
 - VST3 passes `pluginval` strictness 5 on Windows and macOS.
 - AU passes Apple `auval`; actual Logic scan, playback, automation, save/restore, and bounce are separately verified on a Mac.
-
