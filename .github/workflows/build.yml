@@ -1,0 +1,139 @@
+name: Build and validate
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+            package: RapReadyOne-Windows-x64
+          - name: macOS Universal
+            os: macos-latest
+            package: RapReadyOne-macOS-universal
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+
+      - name: Configure macOS universal
+        if: runner.os == 'macOS'
+        run: cmake -S . -B build -G Xcode -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 -DCMAKE_OSX_ARCHITECTURES='arm64;x86_64'
+
+      - name: Build
+        run: cmake --build build --config Release --parallel 3
+
+      - name: Run deterministic DSP tests
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Validate Windows VST3 with pluginval
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_Windows.zip -OutFile pluginval.zip
+          Expand-Archive pluginval.zip -DestinationPath pluginval
+          $validator = Get-ChildItem pluginval -Recurse -Filter pluginval.exe | Select-Object -First 1
+          $plugin = Get-ChildItem build/RapReadyOne_artefacts/Release/VST3 -Directory -Filter '*.vst3' | Select-Object -First 1
+          if ($null -eq $validator -or $null -eq $plugin) { throw 'pluginval or VST3 bundle not found' }
+          & $validator.FullName --strictness-level 5 --skip-gui-tests $plugin.FullName
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Sign and validate macOS Audio Unit
+        if: runner.os == 'macOS'
+        run: |
+          component=$(find build/RapReadyOne_artefacts/Release/AU -maxdepth 1 -name '*.component' -print -quit)
+          test -n "$component"
+          codesign --force --deep --sign - "$component"
+          mkdir -p "$HOME/Library/Audio/Plug-Ins/Components"
+          ditto "$component" "$HOME/Library/Audio/Plug-Ins/Components/$(basename "$component")"
+          killall -9 AudioComponentRegistrar 2>/dev/null || true
+          sleep 3
+          auval -v aufx RpR1 BdRm
+
+      - name: Validate macOS VST3 with pluginval
+        if: runner.os == 'macOS'
+        run: |
+          curl -L https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_macOS.zip -o pluginval.zip
+          ditto -x -k pluginval.zip pluginval
+          validator=$(find pluginval -type f -name pluginval -print -quit)
+          plugin=$(find build/RapReadyOne_artefacts/Release/VST3 -maxdepth 1 -name '*.vst3' -print -quit)
+          test -n "$validator" && test -n "$plugin"
+          chmod +x "$validator"
+          xattr -dr com.apple.quarantine pluginval || true
+          "$validator" --strictness-level 5 --skip-gui-tests "$plugin"
+
+      - name: Package Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $stage = "build/package/${{ matrix.package }}"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          $standalone = Get-ChildItem build/RapReadyOne_artefacts/Release/Standalone -Filter '*.exe' | Select-Object -First 1
+          $plugin = Get-ChildItem build/RapReadyOne_artefacts/Release/VST3 -Directory -Filter '*.vst3' | Select-Object -First 1
+          $renderer = Get-ChildItem build/RapReadyRender_artefacts/Release -Filter '*.exe' | Select-Object -First 1
+          $tests = Get-ChildItem build/RapReadyTests_artefacts/Release -Filter '*.exe' | Select-Object -First 1
+          if ($null -in @($standalone, $plugin, $renderer, $tests)) { throw 'A package artifact was not found' }
+          Copy-Item $standalone.FullName $stage
+          Copy-Item $plugin.FullName $stage -Recurse
+          Copy-Item $renderer.FullName $stage
+          Copy-Item $tests.FullName $stage
+          Copy-Item tools/Install-VST3.ps1 $stage
+          Copy-Item README.md,RESEARCH.md,LICENSE.md $stage
+          Compress-Archive -Path "$stage/*" -DestinationPath "build/${{ matrix.package }}.zip"
+
+      - name: Package macOS
+        if: runner.os == 'macOS'
+        run: |
+          stage="build/package/${{ matrix.package }}"
+          mkdir -p "$stage"
+          ditto build/RapReadyOne_artefacts/Release/AU/*.component "$stage/RapReady One.component"
+          ditto build/RapReadyOne_artefacts/Release/VST3/*.vst3 "$stage/RapReady One.vst3"
+          cp build/RapReadyOne_artefacts/Release/Standalone/* "$stage/" || true
+          cp README.md RESEARCH.md LICENSE.md "$stage/"
+          cat > "$stage/INSTALL-macOS.txt" <<'EOF'
+          Copy RapReady One.component to ~/Library/Audio/Plug-Ins/Components/ and restart Logic.
+          This development build is ad-hoc signed, not Apple-notarized. If Gatekeeper quarantines this
+          artifact that you trust and built/downloaded from this repository, run:
+            xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/RapReady\ One.component
+          Then rescan Bedroom Labs / RapReady One in Logic Pro Plug-in Manager.
+          EOF
+          ditto -c -k --sequesterRsrc --keepParent "$stage" "build/${{ matrix.package }}.zip"
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.package }}
+          path: build/${{ matrix.package }}.zip
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/*/*.zip --repo "${GITHUB_REPOSITORY}" --generate-notes --title "RapReady One ${GITHUB_REF_NAME}"
+
