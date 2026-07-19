@@ -1,4 +1,5 @@
 #include "RapReadyDSP.h"
+#include "Parameters.h"
 
 #include <algorithm>
 #include <cmath>
@@ -14,12 +15,36 @@ float timeCoefficient(double sampleRate, float milliseconds) noexcept
 {
     return static_cast<float>(std::exp(-1.0 / (0.001 * std::max(0.01f, milliseconds) * sampleRate)));
 }
+
+float stageScale(float percent, float maximumScale) noexcept
+{
+    const auto position = std::clamp(percent * 0.01f, 0.0f, 1.0f);
+    return position <= 0.5f ? position * 2.0f
+                            : 1.0f + (position - 0.5f) * 2.0f * (maximumScale - 1.0f);
+}
+
+float threePoint(float percent, float low, float middle, float high) noexcept
+{
+    const auto position = std::clamp(percent * 0.01f, 0.0f, 1.0f);
+    return position <= 0.5f ? std::lerp(low, middle, position * 2.0f)
+                            : std::lerp(middle, high, (position - 0.5f) * 2.0f);
+}
 } // namespace
 
 void RapReadyDSP::Biquad::reset() noexcept
 {
     z1 = 0.0;
     z2 = 0.0;
+}
+
+void RapReadyDSP::Biquad::setBypass() noexcept
+{
+    b0 = 1.0;
+    b1 = 0.0;
+    b2 = 0.0;
+    a1 = 0.0;
+    a2 = 0.0;
+    reset();
 }
 
 float RapReadyDSP::Biquad::process(float input) noexcept
@@ -138,6 +163,8 @@ void RapReadyDSP::ChannelState::reset() noexcept
     presence.reset();
     airShelf.reset();
     lowPass.reset();
+    for (auto& band : advancedEq)
+        band.reset();
     deEsserLowState1 = 0.0f;
     deEsserLowState2 = 0.0f;
 }
@@ -193,6 +220,15 @@ void RapReadyDSP::reset()
     currentAmount = std::clamp(targetAmount.load(), 0.0f, 100.0f);
     lastSettingsAmount = -1.0f;
     lastSettingsNoiseFloor = -1000.0f;
+    currentAdvanced = targetAdvanced;
+    lastSettingsAdvanced = {};
+    lastSettingsAdvanced.filter = -1000.0f;
+    lastSettingsAdvanced.expansion = -1000.0f;
+    lastSettingsAdvanced.compression = -1000.0f;
+    lastSettingsAdvanced.deEss = -1000.0f;
+    lastSettingsAdvanced.saturation = -1000.0f;
+    lastSettingsAdvanced.limiter = -1000.0f;
+    lastSettingsAdvanced.eqGainDb.fill(-1000.0f);
     inputLevelDb.store(minimumDb);
     outputLevelDb.store(minimumDb);
     gainReductionDb.store(0.0f);
@@ -202,6 +238,27 @@ void RapReadyDSP::reset()
 void RapReadyDSP::setAmount(float newAmountPercent) noexcept
 {
     targetAmount.store(std::isfinite(newAmountPercent) ? std::clamp(newAmountPercent, 0.0f, 100.0f) : 0.0f);
+}
+
+void RapReadyDSP::setAdvancedSettings(const AdvancedSettings& newSettings) noexcept
+{
+    const auto sanitizeMacro = [](float value)
+    {
+        return std::isfinite(value) ? std::clamp(value, 0.0f, 100.0f) : 50.0f;
+    };
+    const auto sanitizeEq = [](float value)
+    {
+        return std::isfinite(value) ? std::clamp(value, -6.0f, 6.0f) : 0.0f;
+    };
+
+    targetAdvanced.filter = sanitizeMacro(newSettings.filter);
+    targetAdvanced.expansion = sanitizeMacro(newSettings.expansion);
+    targetAdvanced.compression = sanitizeMacro(newSettings.compression);
+    targetAdvanced.deEss = sanitizeMacro(newSettings.deEss);
+    targetAdvanced.saturation = sanitizeMacro(newSettings.saturation);
+    targetAdvanced.limiter = sanitizeMacro(newSettings.limiter);
+    for (std::size_t i = 0; i < targetAdvanced.eqGainDb.size(); ++i)
+        targetAdvanced.eqGainDb[i] = sanitizeEq(newSettings.eqGainDb[i]);
 }
 
 float RapReadyDSP::dbToGain(float decibels) noexcept
@@ -224,9 +281,15 @@ void RapReadyDSP::updateStageSettings(float smoothedAmount) noexcept
 {
     lastSettingsAmount = smoothedAmount;
     lastSettingsNoiseFloor = noiseFloorDb;
+    lastSettingsAdvanced = currentAdvanced;
     strength = smoothStep(smoothedAmount * 0.01f);
-    const auto highPassHz = 45.0f + 45.0f * strength;
-    const auto lowPassHz = 20000.0f - 2000.0f * std::max(0.0f, (strength - 0.70f) / 0.30f);
+    const auto defaultHighPassHz = 45.0f + 45.0f * strength;
+    const auto highPassHz = threePoint(currentAdvanced.filter, 30.0f + 20.0f * strength,
+                                       defaultHighPassHz, 60.0f + 40.0f * strength);
+    const auto defaultLowPassHz =
+        20000.0f - 2000.0f * std::max(0.0f, (strength - 0.70f) / 0.30f);
+    const auto lowPassHz = threePoint(currentAdvanced.filter, 20000.0f, defaultLowPassHz,
+                                      18500.0f - 2500.0f * strength);
 
     for (auto& channel : channels)
     {
@@ -236,33 +299,94 @@ void RapReadyDSP::updateStageSettings(float smoothedAmount) noexcept
         channel.presence.setPeak(sampleRate, 3600.0f, 0.75f, 1.3f * strength);
         channel.airShelf.setHighShelf(sampleRate, 10500.0f, 1.0f * strength);
         channel.lowPass.setLowPass(sampleRate, lowPassHz, 0.707f);
+        for (std::size_t i = 0; i < channel.advancedEq.size(); ++i)
+        {
+            if (parameters::eqFrequenciesHz[i] < 0.45 * sampleRate &&
+                std::abs(currentAdvanced.eqGainDb[i]) >= 0.01f)
+                channel.advancedEq[i].setPeak(sampleRate, parameters::eqFrequenciesHz[i], 1.0f,
+                                              currentAdvanced.eqGainDb[i]);
+            else
+                channel.advancedEq[i].setBypass();
+        }
     }
 
-    expanderThresholdDb = std::clamp(noiseFloorDb + 8.0f, -56.0f, -42.0f);
-    expanderMaxAttenuationDb = 12.0f * strength;
-    expanderRatio = 1.0f + 0.8f * strength;
+    const auto expansionStrength = strength * stageScale(currentAdvanced.expansion, 1.25f);
+    const auto expansionThresholdOffsetDb =
+        threePoint(currentAdvanced.expansion, 4.0f, 8.0f, 11.0f);
+    expanderThresholdDb = std::clamp(noiseFloorDb + expansionThresholdOffsetDb, -56.0f, -42.0f);
+    expanderMaxAttenuationDb = std::min(12.0f, 12.0f * expansionStrength);
+    expanderRatio = 1.0f + 0.8f * expansionStrength;
     expanderDetector.setTimes(sampleRate, 3.0f, 90.0f);
     expanderOpenCoefficient = timeCoefficient(sampleRate, 4.0f);
-    expanderCloseCoefficient = timeCoefficient(sampleRate, 160.0f);
+    expanderCloseCoefficient =
+        timeCoefficient(sampleRate, threePoint(currentAdvanced.expansion, 220.0f, 160.0f, 120.0f));
 
-    peakCompressor.configure(sampleRate, -8.0f - 10.0f * strength, 1.0f + 3.0f * strength, 5.0f,
-                             7.0f - 4.0f * strength, 55.0f, 2.5f * strength);
-    bodyCompressor.configure(sampleRate, -10.0f - 12.0f * strength, 1.0f + 1.3f * strength, 6.0f, 35.0f,
-                             130.0f, 4.0f * strength);
+    const auto compressionStrength = strength * stageScale(currentAdvanced.compression, 1.45f);
+    const auto compressionTimingStrength = std::min(compressionStrength, 1.0f);
+    peakCompressor.configure(sampleRate, -8.0f - 10.0f * std::min(compressionStrength, 1.25f),
+                             1.0f + 3.0f * compressionStrength, 5.0f,
+                             7.0f - 4.0f * compressionTimingStrength, 55.0f,
+                             std::min(3.0f, 2.5f * compressionStrength));
+    bodyCompressor.configure(sampleRate, -10.0f - 12.0f * std::min(compressionStrength, 1.25f),
+                             1.0f + 1.3f * compressionStrength, 6.0f, 35.0f, 130.0f,
+                             std::min(4.0f, 4.0f * compressionStrength));
 
-    const auto splitHz = 5800.0f;
+    const auto splitHz = threePoint(currentAdvanced.deEss, 6500.0f, 5800.0f, 5200.0f);
     deEsserSplitCoefficient = static_cast<float>(std::exp(-2.0 * pi * splitHz / sampleRate));
-    deEsserMaximumReductionDb = 4.5f * strength;
+    deEsserMaximumReductionDb = std::min(
+        6.0f, 4.5f * strength * stageScale(currentAdvanced.deEss, 1.55f));
+    deEsserAbsoluteOffsetDb = threePoint(currentAdvanced.deEss, 32.0f, 36.0f, 40.0f);
+    deEsserRelativeOffsetDb = threePoint(currentAdvanced.deEss, 12.0f, 15.0f, 18.0f);
+    deEsserSlope = threePoint(currentAdvanced.deEss, 0.5f, 0.75f, 0.9f);
     deEsserDetector.setTimes(sampleRate, 0.8f, 65.0f);
     fullBandDetector.setTimes(sampleRate, 2.0f, 80.0f);
     deEsserAttackCoefficient = timeCoefficient(sampleRate, 1.0f);
     deEsserReleaseCoefficient = timeCoefficient(sampleRate, 75.0f);
 
-    saturationDrive = 1.0f + 0.8f * strength;
-    saturationMix = 0.12f * strength;
+    const auto saturationStrength = strength * stageScale(currentAdvanced.saturation, 1.5f);
+    saturationDrive = 1.0f + 0.8f * saturationStrength;
+    saturationMix = 0.12f * saturationStrength;
     outputGain = dbToGain(1.2f * strength);
-    limiterCeiling = dbToGain(-0.3f - 0.9f * strength);
-    limiterReleaseCoefficient = timeCoefficient(sampleRate, 85.0f);
+    const auto limiterPosition = std::clamp(currentAdvanced.limiter * 0.01f, 0.0f, 1.0f);
+    const auto limiterAdjustmentDb = limiterPosition <= 0.5f
+                                         ? std::lerp(0.2f, 0.0f, limiterPosition * 2.0f)
+                                         : std::lerp(0.0f, -0.8f, (limiterPosition - 0.5f) * 2.0f);
+    limiterCeiling = dbToGain(-0.3f - 0.9f * strength + limiterAdjustmentDb);
+    limiterReleaseCoefficient =
+        timeCoefficient(sampleRate, threePoint(currentAdvanced.limiter, 120.0f, 85.0f, 60.0f));
+}
+
+void RapReadyDSP::smoothAdvancedSettings() noexcept
+{
+    const auto smooth = [this](float current, float target)
+    {
+        return amountSmoothingCoefficient * current + (1.0f - amountSmoothingCoefficient) * target;
+    };
+
+    currentAdvanced.filter = smooth(currentAdvanced.filter, targetAdvanced.filter);
+    currentAdvanced.expansion = smooth(currentAdvanced.expansion, targetAdvanced.expansion);
+    currentAdvanced.compression = smooth(currentAdvanced.compression, targetAdvanced.compression);
+    currentAdvanced.deEss = smooth(currentAdvanced.deEss, targetAdvanced.deEss);
+    currentAdvanced.saturation = smooth(currentAdvanced.saturation, targetAdvanced.saturation);
+    currentAdvanced.limiter = smooth(currentAdvanced.limiter, targetAdvanced.limiter);
+    for (std::size_t i = 0; i < currentAdvanced.eqGainDb.size(); ++i)
+        currentAdvanced.eqGainDb[i] = smooth(currentAdvanced.eqGainDb[i], targetAdvanced.eqGainDb[i]);
+}
+
+bool RapReadyDSP::advancedSettingsNeedUpdate() const noexcept
+{
+    if (std::abs(currentAdvanced.filter - lastSettingsAdvanced.filter) > 0.01f ||
+        std::abs(currentAdvanced.expansion - lastSettingsAdvanced.expansion) > 0.01f ||
+        std::abs(currentAdvanced.compression - lastSettingsAdvanced.compression) > 0.01f ||
+        std::abs(currentAdvanced.deEss - lastSettingsAdvanced.deEss) > 0.01f ||
+        std::abs(currentAdvanced.saturation - lastSettingsAdvanced.saturation) > 0.01f ||
+        std::abs(currentAdvanced.limiter - lastSettingsAdvanced.limiter) > 0.01f)
+        return true;
+
+    for (std::size_t i = 0; i < currentAdvanced.eqGainDb.size(); ++i)
+        if (std::abs(currentAdvanced.eqGainDb[i] - lastSettingsAdvanced.eqGainDb[i]) > 0.005f)
+            return true;
+    return false;
 }
 
 void RapReadyDSP::updateNoiseEstimate(float blockRmsDb, int sampleCount) noexcept
@@ -292,11 +416,11 @@ float RapReadyDSP::calculateDeEsserGain(float linkedFullPeak, float linkedHighPe
 {
     const auto highDb = gainToDb(deEsserDetector.process(linkedHighPeak));
     const auto fullDb = gainToDb(fullBandDetector.process(linkedFullPeak));
-    const auto absoluteExcess = highDb + 36.0f;
-    const auto relativeExcess = (highDb - fullDb) + 15.0f;
+    const auto absoluteExcess = highDb + deEsserAbsoluteOffsetDb;
+    const auto relativeExcess = (highDb - fullDb) + deEsserRelativeOffsetDb;
     const auto triggerDb = std::max(0.0f, std::min(absoluteExcess, relativeExcess));
     const auto wanted =
-        strength < 0.0001f ? 1.0f : dbToGain(-std::min(deEsserMaximumReductionDb, triggerDb * 0.75f));
+        strength < 0.0001f ? 1.0f : dbToGain(-std::min(deEsserMaximumReductionDb, triggerDb * deEsserSlope));
     const auto coefficient = wanted < deEsserGain ? deEsserAttackCoefficient : deEsserReleaseCoefficient;
     deEsserGain = coefficient * deEsserGain + (1.0f - coefficient) * wanted;
     return deEsserGain;
@@ -367,8 +491,10 @@ void RapReadyDSP::process(juce::AudioBuffer<float>& buffer) noexcept
         const auto wantedAmount = targetAmount.load();
         currentAmount =
             amountSmoothingCoefficient * currentAmount + (1.0f - amountSmoothingCoefficient) * wantedAmount;
+        smoothAdvancedSettings();
         if ((controlSampleCounter++ & 31U) == 0U && (std::abs(currentAmount - lastSettingsAmount) > 0.001f ||
-                                                     std::abs(noiseFloorDb - lastSettingsNoiseFloor) > 0.05f))
+                                                     std::abs(noiseFloorDb - lastSettingsNoiseFloor) > 0.05f ||
+                                                     advancedSettingsNeedUpdate()))
             updateStageSettings(currentAmount);
 
         std::array<float, maxChannels> values{};
@@ -385,6 +511,8 @@ void RapReadyDSP::process(juce::AudioBuffer<float>& buffer) noexcept
             auto value = channels[static_cast<std::size_t>(channel)].highPass.process(input);
             value = channels[static_cast<std::size_t>(channel)].mudCut.process(value);
             value = channels[static_cast<std::size_t>(channel)].boxCut.process(value);
+            for (auto& band : channels[static_cast<std::size_t>(channel)].advancedEq)
+                value = band.process(value);
             values[static_cast<std::size_t>(channel)] = value;
             linkedInput = std::max(linkedInput, std::abs(value));
         }

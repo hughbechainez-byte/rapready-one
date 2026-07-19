@@ -135,6 +135,11 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7
+      - name: Verify tag matches CMake project version
+        run: |
+          version=$(sed -nE 's/^project\(RapReadyOne VERSION ([0-9.]+).*/\1/p' CMakeLists.txt)
+          test "v${version}" = "${GITHUB_REF_NAME}"
       - uses: actions/download-artifact@v8
         with:
           path: dist

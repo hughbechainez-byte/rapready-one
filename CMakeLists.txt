@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(RapReadyOne VERSION 0.1.0 LANGUAGES CXX)
+project(RapReadyOne VERSION 0.2.0 LANGUAGES CXX)
 
 include(CTest)
 
@@ -57,15 +57,34 @@ target_compile_definitions(RapReadyDSP PUBLIC
     JUCE_USE_CURL=0
 )
 
+add_library(RapReadyOffline STATIC
+    Source/OfflineRenderer.cpp
+    Source/OfflineRenderer.h
+)
+target_include_directories(RapReadyOffline PUBLIC Source)
+target_link_libraries(RapReadyOffline PUBLIC
+    RapReadyDSP
+    juce::juce_audio_formats
+)
+target_compile_definitions(RapReadyOffline PUBLIC
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0
+)
+
 target_sources(RapReadyOne PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginProcessor.h
     Source/PluginEditor.cpp
     Source/PluginEditor.h
+    Source/AdvancedPanel.cpp
+    Source/AdvancedPanel.h
+    Source/Parameters.h
+    Source/Theme.h
 )
 
 target_link_libraries(RapReadyOne PRIVATE
     RapReadyDSP
+    RapReadyOffline
     juce::juce_audio_utils
     juce::juce_dsp
     PUBLIC
@@ -86,8 +105,7 @@ juce_add_console_app(RapReadyRender PRODUCT_NAME "RapReady File Renderer")
 set_target_properties(RapReadyRender PROPERTIES OUTPUT_NAME "RapReady File Renderer")
 target_sources(RapReadyRender PRIVATE tools/RenderMain.cpp)
 target_link_libraries(RapReadyRender PRIVATE
-    RapReadyDSP
-    juce::juce_audio_formats
+    RapReadyOffline
     juce::juce_recommended_config_flags
     juce::juce_recommended_warning_flags
 )
@@ -100,6 +118,7 @@ if(BUILD_TESTING)
         # Link processor implementations without inheriting plugin-wrapper compile definitions.
         $<LINK_ONLY:RapReadyOne>
         RapReadyDSP
+        RapReadyOffline
         juce::juce_audio_formats
         juce::juce_audio_processors
         juce::juce_recommended_config_flags

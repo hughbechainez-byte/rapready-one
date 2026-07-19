@@ -8,6 +8,19 @@
 
 namespace rapready
 {
+struct AdvancedSettings
+{
+    static constexpr int eqBandCount = 10;
+
+    float filter = 50.0f;
+    float expansion = 50.0f;
+    float compression = 50.0f;
+    float deEss = 50.0f;
+    float saturation = 50.0f;
+    float limiter = 50.0f;
+    std::array<float, eqBandCount> eqGainDb{};
+};
+
 class RapReadyDSP final
 {
   public:
@@ -16,6 +29,7 @@ class RapReadyDSP final
     void prepare(double newSampleRate, int maximumBlockSize, int channelCount);
     void reset();
     void setAmount(float newAmountPercent) noexcept;
+    void setAdvancedSettings(const AdvancedSettings& newSettings) noexcept;
     void process(juce::AudioBuffer<float>& buffer) noexcept;
 
     [[nodiscard]] int getLatencySamples() const noexcept { return lookaheadSamples; }
@@ -28,6 +42,7 @@ class RapReadyDSP final
     struct Biquad
     {
         void reset() noexcept;
+        void setBypass() noexcept;
         float process(float input) noexcept;
         void setHighPass(double sampleRate, float frequency, float q) noexcept;
         void setLowPass(double sampleRate, float frequency, float q) noexcept;
@@ -71,6 +86,7 @@ class RapReadyDSP final
         Biquad presence;
         Biquad airShelf;
         Biquad lowPass;
+        std::array<Biquad, AdvancedSettings::eqBandCount> advancedEq;
         float deEsserLowState1 = 0.0f;
         float deEsserLowState2 = 0.0f;
 
@@ -78,6 +94,8 @@ class RapReadyDSP final
     };
 
     void updateStageSettings(float smoothedAmount) noexcept;
+    void smoothAdvancedSettings() noexcept;
+    [[nodiscard]] bool advancedSettingsNeedUpdate() const noexcept;
     void updateNoiseEstimate(float blockRmsDb, int sampleCount) noexcept;
     float calculateExpanderGain(float linkedPeak) noexcept;
     float calculateDeEsserGain(float linkedFullPeak, float linkedHighPeak) noexcept;
@@ -117,6 +135,9 @@ class RapReadyDSP final
     float lastSettingsAmount = -1.0f;
     float lastSettingsNoiseFloor = -1000.0f;
     float amountSmoothingCoefficient = 0.0f;
+    AdvancedSettings targetAdvanced;
+    AdvancedSettings currentAdvanced;
+    AdvancedSettings lastSettingsAdvanced;
     float noiseFloorDb = -60.0f;
     float expanderGain = 1.0f;
     float deEsserGain = 1.0f;
@@ -129,6 +150,9 @@ class RapReadyDSP final
     float expanderCloseCoefficient = 0.0f;
     float deEsserSplitCoefficient = 0.0f;
     float deEsserMaximumReductionDb = 3.0f;
+    float deEsserAbsoluteOffsetDb = 36.0f;
+    float deEsserRelativeOffsetDb = 15.0f;
+    float deEsserSlope = 0.75f;
     float deEsserAttackCoefficient = 0.0f;
     float deEsserReleaseCoefficient = 0.0f;
     float saturationDrive = 1.0f;

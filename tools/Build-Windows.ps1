@@ -12,7 +12,7 @@ if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
     if (Test-Path -LiteralPath $cmakePath) {
         Set-Alias cmake $cmakePath
     } else {
-        throw 'CMake 3.22 or newer is required.'
+        throw 'CMake 3.24 or newer is required.'
     }
 }
 
@@ -28,4 +28,3 @@ cmake --build $build --config $Configuration --parallel
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 ctest --test-dir $build -C $Configuration --output-on-failure
 exit $LASTEXITCODE
-

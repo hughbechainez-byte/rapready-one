@@ -3,8 +3,8 @@
 RapReady One is a single-knob, real-time vocal cleanup processor for bedroom rap recording. One shared C++/JUCE codebase produces:
 
 - a **Windows VST3** plug-in;
-- a **Windows standalone app** for live microphone testing;
-- a **Windows file renderer** for repeatable before/after WAV tests; and
+- a **Windows standalone app** for live microphone testing and drag-and-drop file cleanup;
+- a **Windows file renderer** for repeatable automated tests; and
 - a **macOS Audio Unit (AUv2)** for Logic Pro, plus macOS VST3 and standalone builds.
 
 The product promise is deliberately **mix-ready vocal**, not automatic song mastering. A vocal insert cannot balance a beat, choose artistic EQ for every voice, or master a finished stereo mix.
@@ -15,21 +15,30 @@ The product promise is deliberately **mix-ready vocal**, not automatic song mast
 
 `HPF → adaptive soft expander → broad corrective EQ → fast peak compression → body compression → split-band de-essing → presence/air EQ → subtle saturation → LPF → 2 ms safety limiter`
 
-The plug-in exposes only the **Rap Ready** automation parameter. Input, output, learned noise floor, and total gain-reduction meters provide guidance without adding setup controls.
+The main view stays one-knob simple. Open **ADVANCED** only when a recording needs more help: each cleanup stage gets one guarded LOW-to-HIGH slider, plus a 10-band vocal EQ. Input, output, learned noise floor, and total gain-reduction meters remain visible in the compact view.
 
 | Internal stage | Knob range |
 |---|---|
-| HPF | bypass at 0; 45–90 Hz when active |
+| HPF | main default 45–90 Hz; Advanced range stays at or below 100 Hz |
 | Adaptive expander | threshold = learned quiet floor + 8 dB; 0–12 dB maximum attenuation |
 | Broad EQ | −2.2 dB at 260 Hz, −1.2 dB at 620 Hz, +1.3 dB at 3.6 kHz, +1 dB air shelf maximum |
-| Peak compressor | 1:1–4:1; 0–2.5 dB maximum reduction |
-| Body compressor | 1:1–2.3:1; 0–4 dB maximum reduction |
-| De-esser | linked high-band reduction above about 5.8 kHz; 0–4.5 dB maximum |
-| Saturation | 0–12% wet, normalized soft `tanh` curve |
+| Peak compressor | guarded ratios/timing; no more than 3 dB reduction |
+| Body compressor | guarded ratios/timing; no more than 4 dB reduction |
+| De-esser | linked high-band reduction around 5.2–6.5 kHz; no more than 6 dB |
+| Saturation | up to 18% wet at the Advanced maximum, normalized soft `tanh` curve |
 | LPF | 20 kHz, moving to 18 kHz only near the top of the knob |
-| Limiter | stereo-linked, 2 ms lookahead; −0.3 to −1.2 dBFS sample-peak ceiling |
+| Limiter | stereo-linked, 2 ms lookahead; down to −2 dBFS at the Advanced maximum |
 
 At 0%, the signal is an exact latency-aligned dry path. A short crossfade immediately above 0% keeps bypass automation click-free; the limiter ceiling is guaranteed once that crossfade is fully engaged, not while automating through the near-zero transition.
+
+## Advanced controls and comparison
+
+Every stage slider uses `50` as the researched rap default. Moving lower relaxes only that stage; moving higher strengthens it inside fixed safety caps. The panel always shows a short explanation of the LOW and HIGH ends.
+
+- **Filter, Expansion, Compression, De-ess, Saturation, Limiter:** one vertical macro each. These coordinate the technical threshold, ratio, timing, frequency, or ceiling values behind the scenes.
+- **10-band EQ:** 80, 160, 315, 630 Hz, 1.25, 2.5, 4, 6.3, 10, and 16 kHz; each band runs from −6 to +6 dB. Start with 1–2 dB moves, especially from 4–16 kHz.
+- **PREVIOUS / CURRENT:** after a real user edit, PREVIOUS auditions all 17 audio settings exactly as they were immediately before that edit. CURRENT returns to the new setup. It compares processing settings, not rewound audio; the theme never changes.
+- **Theme:** Cyan, Violet, Emerald, Amber, Ice, or Rose. Every interface uses a true black background with text and accents derived from the selected hue. The choice is saved with plug-in state and never affects audio.
 
 ## Recording setup
 
@@ -40,11 +49,12 @@ RapReady One can reduce steady low-level room noise, rumble, mud, level jumps, a
 ## Windows use
 
 1. Download `RapReadyOne-Windows-x64.zip` from the latest GitHub Release and extract it.
-2. Launch `RapReady One.exe` for the standalone mic test. Select the input/output device from **Options → Audio/MIDI Settings**.
-3. For a DAW, run `Install-VST3.ps1`, then rescan plug-ins and insert **Bedroom Labs → RapReady One** on a dry vocal track.
-4. For an offline test, run `RapReady File Renderer.exe input.wav output.wav 62`.
+2. Launch `RapReady One.exe`. For live testing, select the input/output device from **Options → Audio/MIDI Settings**.
+3. For an existing recording, drag one WAV, AIFF, FLAC, OGG, or MP3 anywhere onto the app, or click **BROWSE FILE**. The app snapshots the current main and Advanced settings and writes a unique 24-bit `<name>-RapReady.wav` beside the source. The source is never overwritten, and cancellation leaves no partial result.
+4. For a DAW, run `Install-VST3.ps1`, then rescan plug-ins and insert **Bedroom Labs → RapReady One** on a dry vocal track.
+5. For a scripted offline test, run `RapReady File Renderer.exe input.wav output.wav 62`.
 
-The renderer accepts mono or stereo input and produces a latency-compensated 24-bit WAV of the same length.
+File cleanup accepts mono or stereo input and produces a latency-compensated 24-bit WAV at the same sample rate, channel count, and exact length. AAC/M4A and video containers are not accepted in this release.
 
 ## Logic Pro use
 
@@ -52,6 +62,8 @@ The renderer accepts mono or stereo input and produces a latency-compensated 24-
 2. Copy `RapReady One.component` to `~/Library/Audio/Plug-Ins/Components/`.
 3. Restart Logic, open **Logic Pro → Settings → Plug-in Manager**, find **Bedroom Labs / RapReady One**, and scan it.
 4. Insert it as an Audio FX plug-in on a mono or stereo vocal track.
+
+The AU uses the same compact futuristic interface, six saved themes, Advanced controls, and PREVIOUS/CURRENT audition as the Windows build. File drag-and-drop is intentionally a standalone-app feature; in Logic, place the AU on an audio track.
 
 The CI artifact is an ad-hoc-signed development build, not Apple-notarized commercial distribution. If macOS quarantines a build you created or obtained from this project, follow the troubleshooting note included in the package. Final public commercial distribution needs a Developer ID signature and Apple notarization.
 

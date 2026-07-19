@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Dsp/RapReadyDSP.h"
+#include "Parameters.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 
 class RapReadyOneAudioProcessor final : public juce::AudioProcessor
@@ -36,6 +37,9 @@ class RapReadyOneAudioProcessor final : public juce::AudioProcessor
     [[nodiscard]] float getOutputLevelDb() const noexcept { return processor.getOutputLevelDb(); }
     [[nodiscard]] float getGainReductionDb() const noexcept { return processor.getGainReductionDb(); }
     [[nodiscard]] float getNoiseFloorDb() const noexcept { return processor.getNoiseFloorDb(); }
+    [[nodiscard]] rapready::AdvancedSettings getAdvancedSettings() const noexcept;
+    void setAuditionSnapshot(const rapready::parameters::AudioSnapshot& snapshot) noexcept;
+    void clearAuditionSnapshot() noexcept;
 
     juce::AudioProcessorValueTreeState parameters;
 
@@ -44,6 +48,10 @@ class RapReadyOneAudioProcessor final : public juce::AudioProcessor
 
     rapready::RapReadyDSP processor;
     std::atomic<float>* amountParameter = nullptr;
+    std::array<std::atomic<float>*, rapready::parameters::stageIds.size()> stageParameters{};
+    std::array<std::atomic<float>*, rapready::parameters::eqIds.size()> eqParameters{};
+    std::array<std::atomic<float>, rapready::parameters::audioStateIds.size()> auditionValues{};
+    std::atomic<bool> auditionActive{false};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(RapReadyOneAudioProcessor)
 };
