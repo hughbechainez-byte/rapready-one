@@ -187,11 +187,11 @@ bool RapReadyOneAudioProcessorEditor::HistoryKnob::keyPressed(const juce::KeyPre
 }
 
 RapReadyOneAudioProcessorEditor::RapReadyOneAudioProcessorEditor(
-    RapReadyOneAudioProcessor& processor)
-    : AudioProcessorEditor(&processor), audioProcessor(processor),
-      amountAttachment(processor.parameters, rapready::parameters::amount, amountKnob),
-      themeAttachment(processor.parameters, rapready::parameters::theme, themeSelector),
-      advancedPanel(processor.parameters)
+    RapReadyOneAudioProcessor& processorToUse)
+    : AudioProcessorEditor(&processorToUse), audioProcessor(processorToUse),
+      amountAttachment(processorToUse.parameters, rapready::parameters::amount, amountKnob),
+      themeAttachment(processorToUse.parameters, rapready::parameters::theme, themeSelector),
+      advancedPanel(processorToUse.parameters)
 {
     standaloneMode = audioProcessor.wrapperType == juce::AudioProcessor::wrapperType_Standalone;
     setLookAndFeel(&lookAndFeel);
@@ -210,7 +210,7 @@ RapReadyOneAudioProcessorEditor::RapReadyOneAudioProcessorEditor(
 
     themeSelector.addItemList(
         juce::StringArray{"CYAN", "VIOLET", "EMERALD", "AMBER", "ICE", "ROSE"}, 1);
-    if (const auto* theme = processor.parameters.getRawParameterValue(rapready::parameters::theme))
+    if (const auto* theme = processorToUse.parameters.getRawParameterValue(rapready::parameters::theme))
         themeSelector.setSelectedItemIndex(juce::roundToInt(theme->load()),
                                            juce::dontSendNotification);
     themeSelector.setTooltip("Changes the interface hue; audio is unchanged and the choice is saved with the plug-in state.");
@@ -563,7 +563,7 @@ void RapReadyOneAudioProcessorEditor::startFileRender(const juce::File& inputFil
     request.advanced = advancedFromSnapshot(audibleSnapshot);
 
     selectedInputName = inputFile.getFileName();
-    latestOutput = {};
+    latestOutput = juce::File{};
     renderCancelRequested.store(false);
     renderProgress.store(0.0f);
     rendering.store(true);
