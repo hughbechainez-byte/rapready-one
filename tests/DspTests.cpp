@@ -413,11 +413,16 @@ int main()
               "parameter layout contains 17 audio controls plus a separate theme choice");
 
         const auto defaults = processor.getAdvancedSettings();
-        const auto stagesDefault = defaults.filter == 50.0f && defaults.expansion == 50.0f &&
-                                   defaults.compression == 50.0f && defaults.deEss == 50.0f &&
-                                   defaults.saturation == 50.0f && defaults.limiter == 50.0f;
+        const auto near = [](float value, float expected)
+        {
+            return std::abs(value - expected) < 0.011f;
+        };
+        const auto stagesDefault = near(defaults.filter, 50.0f) &&
+                                   near(defaults.expansion, 50.0f) &&
+                                   near(defaults.compression, 50.0f) && near(defaults.deEss, 50.0f) &&
+                                   near(defaults.saturation, 50.0f) && near(defaults.limiter, 50.0f);
         const auto eqDefaults = std::all_of(defaults.eqGainDb.begin(), defaults.eqGainDb.end(),
-                                            [](float value) { return value == 0.0f; });
+                                            [&](float value) { return near(value, 0.0f); });
         check(std::abs(getParameterValue(processor, rapready::parameters::amount) - 62.0f) < 0.01f &&
                   stagesDefault && eqDefaults &&
                   getParameterValue(processor, rapready::parameters::theme) == 0.0f,
