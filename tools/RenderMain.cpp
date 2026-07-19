@@ -30,7 +30,7 @@ int main(int argc, char* argv[])
     }
 
     outputFile.deleteFile();
-    auto outputStream = outputFile.createOutputStream();
+    std::unique_ptr<juce::OutputStream> outputStream = outputFile.createOutputStream();
     if (outputStream == nullptr)
     {
         std::cerr << "Could not create output file.\n";
