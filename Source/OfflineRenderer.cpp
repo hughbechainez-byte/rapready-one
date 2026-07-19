@@ -176,6 +176,9 @@ OfflineRenderResult renderAudioFile(const OfflineRenderRequest& request, CancelP
 
     if (isCancelled())
         return cancelled(request.outputFile);
+    if (!request.replaceExisting && request.outputFile.exists())
+        return failed(request.outputFile,
+                      "Another output appeared while cleaning; the new result was not committed");
 
     if (!temporary.overwriteTargetFileWithTemporary())
         return failed(request.outputFile, "The cleaned WAV could not replace its target");

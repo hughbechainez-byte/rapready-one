@@ -435,7 +435,7 @@ void RapReadyOneAudioProcessorEditor::paint(juce::Graphics& g)
         g.drawText("WAV  //  AIFF  //  FLAC  //  OGG  //  MP3    ->    24-BIT WAV",
                    30, 642, 460, 18, juce::Justification::centred);
         if (selectedInputName.isNotEmpty())
-            g.drawFittedText(selectedInputName, 30, 679, 460, 16,
+            g.drawFittedText(selectedInputName, 30, 653, 460, 15,
                              juce::Justification::centred, 1);
     }
     g.restoreState();
@@ -449,11 +449,11 @@ void RapReadyOneAudioProcessorEditor::resized()
 
     if (standaloneMode)
     {
-        browseButton.setBounds(30, 662, 130, 30);
-        cancelButton.setBounds(170, 662, 110, 30);
-        revealButton.setBounds(290, 662, 200, 30);
-        progressBar.setBounds(30, 705, 460, 8);
-        renderStatus.setBounds(30, 718, 460, 45);
+        browseButton.setBounds(30, 673, 130, 29);
+        cancelButton.setBounds(170, 673, 110, 29);
+        revealButton.setBounds(290, 673, 200, 29);
+        progressBar.setBounds(30, 712, 460, 8);
+        renderStatus.setBounds(30, 724, 460, 40);
     }
 
     if (advancedVisible)
