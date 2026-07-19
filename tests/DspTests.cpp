@@ -1,5 +1,6 @@
 #include "Dsp/RapReadyDSP.h"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -16,6 +17,45 @@ bool allFinite(const juce::AudioBuffer<float>& buffer)
             if (!std::isfinite(buffer.getSample(channel, sample)))
                 return false;
     return true;
+}
+
+float maximumDifference(const juce::AudioBuffer<float>& a, const juce::AudioBuffer<float>& b)
+{
+    float result = 0.0f;
+    for (int channel = 0; channel < a.getNumChannels(); ++channel)
+        for (int sample = 0; sample < a.getNumSamples(); ++sample)
+            result = std::max(result, std::abs(a.getSample(channel, sample) - b.getSample(channel, sample)));
+    return result;
+}
+
+juce::AudioBuffer<float> makeFixture(int sampleCount)
+{
+    juce::AudioBuffer<float> result(1, sampleCount);
+    juce::Random random(0x52505231);
+    for (int i = 0; i < sampleCount; ++i)
+    {
+        const auto inPhrase = (i % 6000) < 4300;
+        const auto voice = 0.17f * std::sin(juce::MathConstants<double>::twoPi * 155.0 * i / sampleRate) +
+                           0.08f * std::sin(juce::MathConstants<double>::twoPi * 930.0 * i / sampleRate) +
+                           0.035f * std::sin(juce::MathConstants<double>::twoPi * 7100.0 * i / sampleRate);
+        const auto noise = (random.nextFloat() * 2.0f - 1.0f) * 0.002f;
+        result.setSample(0, i, (inPhrase ? voice : voice * 0.008f) + noise);
+    }
+    return result;
+}
+
+void processInPartitions(rapready::RapReadyDSP& dsp, juce::AudioBuffer<float>& buffer, int partitionSize)
+{
+    for (int position = 0; position < buffer.getNumSamples(); position += partitionSize)
+    {
+        const auto count = std::min(partitionSize, buffer.getNumSamples() - position);
+        juce::AudioBuffer<float> part(buffer.getNumChannels(), count);
+        for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+            part.copyFrom(channel, 0, buffer, channel, position, count);
+        dsp.process(part);
+        for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+            buffer.copyFrom(channel, position, part, channel, 0, count);
+    }
 }
 
 float renderSineRms(float frequency, float amount)
@@ -46,6 +86,17 @@ int main()
 
     {
         rapready::RapReadyDSP dsp;
+        juce::AudioBuffer<float> buffer(1, 8);
+        buffer.clear();
+        buffer.setSample(0, 2, 0.25f);
+        juce::AudioBuffer<float> original;
+        original.makeCopyOf(buffer);
+        dsp.process(buffer);
+        check(maximumDifference(buffer, original) == 0.0f, "process before prepare is a safe no-op");
+    }
+
+    {
+        rapready::RapReadyDSP dsp;
         dsp.setAmount(0.0f);
         dsp.prepare(sampleRate, 4096, 1);
         const auto latency = dsp.getLatencySamples();
@@ -66,6 +117,24 @@ int main()
     }
 
     {
+        auto whole = makeFixture(24000);
+        juce::AudioBuffer<float> partitioned;
+        partitioned.makeCopyOf(whole);
+
+        rapready::RapReadyDSP wholeDsp;
+        wholeDsp.setAmount(62.0f);
+        wholeDsp.prepare(sampleRate, whole.getNumSamples(), 1);
+        wholeDsp.process(whole);
+
+        rapready::RapReadyDSP partitionedDsp;
+        partitionedDsp.setAmount(62.0f);
+        partitionedDsp.prepare(sampleRate, 257, 1);
+        processInPartitions(partitionedDsp, partitioned, 257);
+        check(maximumDifference(whole, partitioned) < 2.0e-5f,
+              "audio is invariant to host block partitioning");
+    }
+
+    {
         rapready::RapReadyDSP dsp;
         dsp.setAmount(100.0f);
         dsp.prepare(sampleRate, 8192, 2);
@@ -78,22 +147,24 @@ int main()
         check(allFinite(buffer), "extreme input produces only finite samples");
         check(buffer.getMagnitude(0, dsp.getLatencySamples(),
                                   buffer.getNumSamples() - dsp.getLatencySamples()) <= 0.88f,
-              "lookahead limiter respects the internal ceiling");
+              "lookahead limiter respects the internal sample-peak ceiling");
         check(dsp.getGainReductionDb() > 0.1f, "gain-reduction meter responds");
     }
 
     {
         rapready::RapReadyDSP dsp;
-        dsp.setAmount(62.0f);
+        dsp.setAmount(std::numeric_limits<float>::quiet_NaN());
         dsp.prepare(44100.0, 1, 2);
         juce::AudioBuffer<float> buffer(2, 1);
         for (int i = 0; i < 2000; ++i)
         {
-            buffer.setSample(0, 0, i == 10 ? std::numeric_limits<float>::quiet_NaN() : 0.0f);
-            buffer.setSample(1, 0, 0.0f);
+            const auto invalid = i == 10 ? std::numeric_limits<float>::infinity()
+                                         : (i == 11 ? std::numeric_limits<float>::max() : 0.1f);
+            buffer.setSample(0, 0, invalid);
+            buffer.setSample(1, 0, -invalid);
             dsp.process(buffer);
         }
-        check(allFinite(buffer), "one-sample blocks and reset silence remain finite");
+        check(allFinite(buffer), "non-finite parameter and input recover to finite output");
     }
 
     {
@@ -104,15 +175,57 @@ int main()
 
     {
         rapready::RapReadyDSP dsp;
+        dsp.setAmount(100.0f);
+        dsp.prepare(sampleRate, 512, 1);
+        juce::AudioBuffer<float> warmup(1, 4096);
+        warmup.clear();
+        for (int i = 0; i < warmup.getNumSamples(); ++i)
+            warmup.setSample(0, i,
+                             0.8f * std::sin(juce::MathConstants<double>::twoPi * 220.0 * i / sampleRate));
+        processInPartitions(dsp, warmup, 512);
+
+        dsp.setAmount(0.0f);
+        juce::AudioBuffer<float> settle(1, 30000);
+        settle.clear();
+        processInPartitions(dsp, settle, 127);
+
+        juce::AudioBuffer<float> dry(1, 4096);
+        juce::AudioBuffer<float> reference(1, 4096);
+        for (int i = 0; i < dry.getNumSamples(); ++i)
+        {
+            const auto value = 0.2f * std::sin(juce::MathConstants<double>::twoPi * 440.0 * i / sampleRate);
+            dry.setSample(0, i, value);
+            reference.setSample(0, i, value);
+        }
+        processInPartitions(dsp, dry, 127);
+        float maxError = 0.0f;
+        for (int i = dsp.getLatencySamples(); i < dry.getNumSamples(); ++i)
+            maxError = std::max(maxError, std::abs(dry.getSample(0, i) -
+                                                   reference.getSample(0, i - dsp.getLatencySamples())));
+        check(maxError < 2.0e-5f, "automation to zero settles to the exact dry path");
+    }
+
+    {
+        rapready::RapReadyDSP dsp;
         dsp.setAmount(62.0f);
         dsp.prepare(192000.0, 257, 2);
-        juce::AudioBuffer<float> buffer(2, 257);
+        juce::AudioBuffer<float> buffer(2, 4096);
         juce::Random random(12345);
         for (int channel = 0; channel < 2; ++channel)
             for (int i = 0; i < buffer.getNumSamples(); ++i)
                 buffer.setSample(channel, i, random.nextFloat() * 0.4f - 0.2f);
-        dsp.process(buffer);
+        processInPartitions(dsp, buffer, 257);
         check(allFinite(buffer), "192 kHz stereo processing remains finite");
+        check(buffer.getMagnitude(0, dsp.getLatencySamples(),
+                                  buffer.getNumSamples() - dsp.getLatencySamples()) > 1.0e-5f,
+              "192 kHz test exercises post-latency audio");
+
+        dsp.reset();
+        juce::AudioBuffer<float> silence(2, dsp.getLatencySamples() + 512);
+        silence.clear();
+        processInPartitions(dsp, silence, 113);
+        check(silence.getMagnitude(0, 0, silence.getNumSamples()) == 0.0f,
+              "reset clears filter, detector, queue, and delay state");
     }
 
     std::cout << (failures == 0 ? "ALL DSP TESTS PASSED\n" : "DSP TESTS FAILED\n");

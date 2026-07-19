@@ -2,6 +2,7 @@
 
 #include <array>
 #include <atomic>
+#include <cstdint>
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <vector>
 
@@ -70,7 +71,8 @@ class RapReadyDSP final
         Biquad presence;
         Biquad airShelf;
         Biquad lowPass;
-        float deEsserLowState = 0.0f;
+        float deEsserLowState1 = 0.0f;
+        float deEsserLowState2 = 0.0f;
 
         void reset() noexcept;
     };
@@ -95,13 +97,22 @@ class RapReadyDSP final
     int activeChannels = 1;
     int lookaheadSamples = 96;
     int delayWriteIndex = 0;
-    int peakWindowWriteIndex = 0;
+    int limiterQueueHead = 0;
+    int limiterQueueCount = 0;
+    int noiseFrameSamples = 960;
 
     std::array<std::vector<float>, maxChannels> delayLines;
-    std::vector<float> limiterPeakWindow;
+    std::vector<float> limiterQueueValues;
+    std::vector<std::uint64_t> limiterQueueIndices;
+    std::uint64_t limiterSampleIndex = 0;
+    std::uint64_t controlSampleCounter = 0;
+    double noiseAnalysisSquareSum = 0.0;
+    int noiseAnalysisSampleCount = 0;
 
     std::atomic<float> targetAmount{62.0f};
     float currentAmount = 62.0f;
+    float lastSettingsAmount = -1.0f;
+    float lastSettingsNoiseFloor = -1000.0f;
     float amountSmoothingCoefficient = 0.0f;
     float noiseFloorDb = -60.0f;
     float expanderGain = 1.0f;

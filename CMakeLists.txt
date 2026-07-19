@@ -35,6 +35,8 @@ juce_add_plugin(RapReadyOne
     IS_MIDI_EFFECT FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     COPY_PLUGIN_AFTER_BUILD FALSE
+    MICROPHONE_PERMISSION_ENABLED TRUE
+    MICROPHONE_PERMISSION_TEXT "RapReady One uses the selected microphone for live vocal processing."
     AU_MAIN_TYPE kAudioUnitType_Effect
     VST3_CATEGORIES Fx Dynamics Filter
 )
@@ -79,6 +81,7 @@ target_compile_definitions(RapReadyOne PUBLIC
 )
 
 juce_add_console_app(RapReadyTests PRODUCT_NAME "RapReady DSP Tests")
+set_target_properties(RapReadyTests PROPERTIES OUTPUT_NAME "RapReady DSP Tests")
 target_sources(RapReadyTests PRIVATE tests/DspTests.cpp)
 target_link_libraries(RapReadyTests PRIVATE
     RapReadyDSP
@@ -88,6 +91,7 @@ target_link_libraries(RapReadyTests PRIVATE
 )
 
 juce_add_console_app(RapReadyRender PRODUCT_NAME "RapReady File Renderer")
+set_target_properties(RapReadyRender PROPERTIES OUTPUT_NAME "RapReady File Renderer")
 target_sources(RapReadyRender PRIVATE tools/RenderMain.cpp)
 target_link_libraries(RapReadyRender PRIVATE
     RapReadyDSP
@@ -98,4 +102,3 @@ target_link_libraries(RapReadyRender PRIVATE
 
 enable_testing()
 add_test(NAME RapReadyDSP COMMAND RapReadyTests)
-

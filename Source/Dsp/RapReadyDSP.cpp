@@ -138,7 +138,8 @@ void RapReadyDSP::ChannelState::reset() noexcept
     presence.reset();
     airShelf.reset();
     lowPass.reset();
-    deEsserLowState = 0.0f;
+    deEsserLowState1 = 0.0f;
+    deEsserLowState2 = 0.0f;
 }
 
 void RapReadyDSP::prepare(double newSampleRate, int, int channelCount)
@@ -146,10 +147,12 @@ void RapReadyDSP::prepare(double newSampleRate, int, int channelCount)
     sampleRate = std::max(8000.0, newSampleRate);
     activeChannels = std::clamp(channelCount, 1, maxChannels);
     lookaheadSamples = std::max(1, static_cast<int>(std::round(sampleRate * 0.002)));
+    noiseFrameSamples = std::max(1, static_cast<int>(std::round(sampleRate * 0.020)));
 
     for (auto& line : delayLines)
         line.assign(static_cast<std::size_t>(lookaheadSamples + 1), 0.0f);
-    limiterPeakWindow.assign(static_cast<std::size_t>(lookaheadSamples + 1), 0.0f);
+    limiterQueueValues.assign(static_cast<std::size_t>(lookaheadSamples + 1), 0.0f);
+    limiterQueueIndices.assign(static_cast<std::size_t>(lookaheadSamples + 1), 0);
 
     amountSmoothingCoefficient = timeCoefficient(sampleRate, 45.0f);
     reset();
@@ -162,7 +165,8 @@ void RapReadyDSP::reset()
         channel.reset();
     for (auto& line : delayLines)
         std::fill(line.begin(), line.end(), 0.0f);
-    std::fill(limiterPeakWindow.begin(), limiterPeakWindow.end(), 0.0f);
+    std::fill(limiterQueueValues.begin(), limiterQueueValues.end(), 0.0f);
+    std::fill(limiterQueueIndices.begin(), limiterQueueIndices.end(), 0);
 
     peakCompressor.reset();
     bodyCompressor.reset();
@@ -170,12 +174,19 @@ void RapReadyDSP::reset()
     deEsserDetector.reset();
     fullBandDetector.reset();
     delayWriteIndex = 0;
-    peakWindowWriteIndex = 0;
+    limiterQueueHead = 0;
+    limiterQueueCount = 0;
+    limiterSampleIndex = 0;
+    controlSampleCounter = 0;
+    noiseAnalysisSquareSum = 0.0;
+    noiseAnalysisSampleCount = 0;
     expanderGain = 1.0f;
     deEsserGain = 1.0f;
     limiterGain = 1.0f;
     noiseFloorDb = -60.0f;
     currentAmount = std::clamp(targetAmount.load(), 0.0f, 100.0f);
+    lastSettingsAmount = -1.0f;
+    lastSettingsNoiseFloor = -1000.0f;
     inputLevelDb.store(minimumDb);
     outputLevelDb.store(minimumDb);
     gainReductionDb.store(0.0f);
@@ -184,7 +195,7 @@ void RapReadyDSP::reset()
 
 void RapReadyDSP::setAmount(float newAmountPercent) noexcept
 {
-    targetAmount.store(std::clamp(newAmountPercent, 0.0f, 100.0f));
+    targetAmount.store(std::isfinite(newAmountPercent) ? std::clamp(newAmountPercent, 0.0f, 100.0f) : 0.0f);
 }
 
 float RapReadyDSP::dbToGain(float decibels) noexcept
@@ -205,6 +216,8 @@ float RapReadyDSP::smoothStep(float value) noexcept
 
 void RapReadyDSP::updateStageSettings(float smoothedAmount) noexcept
 {
+    lastSettingsAmount = smoothedAmount;
+    lastSettingsNoiseFloor = noiseFloorDb;
     strength = smoothStep(smoothedAmount * 0.01f);
     const auto highPassHz = 45.0f + 45.0f * strength;
     const auto lowPassHz = 20000.0f - 2000.0f * std::max(0.0f, (strength - 0.70f) / 0.30f);
@@ -260,13 +273,10 @@ void RapReadyDSP::updateNoiseEstimate(float blockRmsDb, int sampleCount) noexcep
 
 float RapReadyDSP::calculateExpanderGain(float linkedPeak) noexcept
 {
-    if (strength < 0.0001f)
-        return 1.0f;
-
     const auto levelDb = gainToDb(expanderDetector.process(linkedPeak));
     const auto distanceBelow = std::max(0.0f, expanderThresholdDb - levelDb);
     const auto attenuationDb = std::min(expanderMaxAttenuationDb, distanceBelow * (expanderRatio - 1.0f));
-    const auto wanted = dbToGain(-attenuationDb);
+    const auto wanted = strength < 0.0001f ? 1.0f : dbToGain(-attenuationDb);
     const auto coefficient = wanted > expanderGain ? expanderOpenCoefficient : expanderCloseCoefficient;
     expanderGain = coefficient * expanderGain + (1.0f - coefficient) * wanted;
     return expanderGain;
@@ -274,15 +284,13 @@ float RapReadyDSP::calculateExpanderGain(float linkedPeak) noexcept
 
 float RapReadyDSP::calculateDeEsserGain(float linkedFullPeak, float linkedHighPeak) noexcept
 {
-    if (strength < 0.0001f)
-        return 1.0f;
-
     const auto highDb = gainToDb(deEsserDetector.process(linkedHighPeak));
     const auto fullDb = gainToDb(fullBandDetector.process(linkedFullPeak));
     const auto absoluteExcess = highDb + 36.0f;
     const auto relativeExcess = (highDb - fullDb) + 15.0f;
     const auto triggerDb = std::max(0.0f, std::min(absoluteExcess, relativeExcess));
-    const auto wanted = dbToGain(-std::min(deEsserMaximumReductionDb, triggerDb * 0.75f));
+    const auto wanted =
+        strength < 0.0001f ? 1.0f : dbToGain(-std::min(deEsserMaximumReductionDb, triggerDb * 0.75f));
     const auto coefficient = wanted < deEsserGain ? deEsserAttackCoefficient : deEsserReleaseCoefficient;
     deEsserGain = coefficient * deEsserGain + (1.0f - coefficient) * wanted;
     return deEsserGain;
@@ -290,12 +298,35 @@ float RapReadyDSP::calculateDeEsserGain(float linkedFullPeak, float linkedHighPe
 
 float RapReadyDSP::calculateLimiterGain(float linkedPeak) noexcept
 {
-    if (limiterPeakWindow.empty())
+    if (limiterQueueValues.empty())
         return 1.0f;
 
-    limiterPeakWindow[static_cast<std::size_t>(peakWindowWriteIndex)] = linkedPeak;
-    peakWindowWriteIndex = (peakWindowWriteIndex + 1) % static_cast<int>(limiterPeakWindow.size());
-    const auto windowPeak = *std::max_element(limiterPeakWindow.begin(), limiterPeakWindow.end());
+    const auto capacity = static_cast<int>(limiterQueueValues.size());
+    const auto oldestAllowed = limiterSampleIndex > static_cast<std::uint64_t>(lookaheadSamples)
+                                   ? limiterSampleIndex - static_cast<std::uint64_t>(lookaheadSamples)
+                                   : 0;
+    while (limiterQueueCount > 0 &&
+           limiterQueueIndices[static_cast<std::size_t>(limiterQueueHead)] < oldestAllowed)
+    {
+        limiterQueueHead = (limiterQueueHead + 1) % capacity;
+        --limiterQueueCount;
+    }
+
+    while (limiterQueueCount > 0)
+    {
+        const auto tail = (limiterQueueHead + limiterQueueCount - 1) % capacity;
+        if (limiterQueueValues[static_cast<std::size_t>(tail)] > linkedPeak)
+            break;
+        --limiterQueueCount;
+    }
+
+    const auto insertion = (limiterQueueHead + limiterQueueCount) % capacity;
+    limiterQueueValues[static_cast<std::size_t>(insertion)] = linkedPeak;
+    limiterQueueIndices[static_cast<std::size_t>(insertion)] = limiterSampleIndex;
+    ++limiterQueueCount;
+
+    const auto windowPeak = limiterQueueValues[static_cast<std::size_t>(limiterQueueHead)];
+    ++limiterSampleIndex;
     const auto wanted = strength < 0.0001f || windowPeak <= limiterCeiling
                             ? 1.0f
                             : limiterCeiling / std::max(windowPeak, 0.000001f);
@@ -310,13 +341,12 @@ void RapReadyDSP::process(juce::AudioBuffer<float>& buffer) noexcept
     juce::ScopedNoDenormals noDenormals;
     const auto channelCount = std::min(activeChannels, buffer.getNumChannels());
     const auto sampleCount = buffer.getNumSamples();
-    if (channelCount <= 0 || sampleCount <= 0)
+    if (channelCount <= 0 || sampleCount <= 0 || delayLines[0].empty() || limiterQueueValues.empty())
         return;
 
     for (auto channel = channelCount; channel < buffer.getNumChannels(); ++channel)
         buffer.clear(channel, 0, sampleCount);
 
-    double inputSquareSum = 0.0;
     float blockInputPeak = 0.0f;
     float blockOutputPeak = 0.0f;
     float maximumReduction = 0.0f;
@@ -330,27 +360,34 @@ void RapReadyDSP::process(juce::AudioBuffer<float>& buffer) noexcept
         const auto wantedAmount = targetAmount.load();
         currentAmount =
             amountSmoothingCoefficient * currentAmount + (1.0f - amountSmoothingCoefficient) * wantedAmount;
-        if ((sample & 31) == 0)
+        if ((controlSampleCounter++ & 31U) == 0U && (std::abs(currentAmount - lastSettingsAmount) > 0.001f ||
+                                                     std::abs(noiseFloorDb - lastSettingsNoiseFloor) > 0.05f))
             updateStageSettings(currentAmount);
 
         std::array<float, maxChannels> values{};
+        std::array<float, maxChannels> dryValues{};
         float linkedInput = 0.0f;
         for (auto channel = 0; channel < channelCount; ++channel)
         {
             const auto rawInput = writePointers[static_cast<std::size_t>(channel)][sample];
-            const auto input = std::isfinite(rawInput) ? rawInput : 0.0f;
+            const auto input = std::isfinite(rawInput) ? std::clamp(rawInput, -8.0f, 8.0f) : 0.0f;
+            dryValues[static_cast<std::size_t>(channel)] = input;
             blockInputPeak = std::max(blockInputPeak, std::abs(input));
-            inputSquareSum += static_cast<double>(input) * input;
+            noiseAnalysisSquareSum += static_cast<double>(input) * input;
 
-            auto value = input;
-            if (strength > 0.0001f)
-            {
-                value = channels[static_cast<std::size_t>(channel)].highPass.process(value);
-                value = channels[static_cast<std::size_t>(channel)].mudCut.process(value);
-                value = channels[static_cast<std::size_t>(channel)].boxCut.process(value);
-            }
+            auto value = channels[static_cast<std::size_t>(channel)].highPass.process(input);
+            value = channels[static_cast<std::size_t>(channel)].mudCut.process(value);
+            value = channels[static_cast<std::size_t>(channel)].boxCut.process(value);
             values[static_cast<std::size_t>(channel)] = value;
             linkedInput = std::max(linkedInput, std::abs(value));
+        }
+        noiseAnalysisSampleCount += channelCount;
+        if (noiseAnalysisSampleCount >= noiseFrameSamples * channelCount)
+        {
+            const auto noiseRms = std::sqrt(noiseAnalysisSquareSum / noiseAnalysisSampleCount);
+            updateNoiseEstimate(gainToDb(static_cast<float>(noiseRms)), noiseFrameSamples);
+            noiseAnalysisSquareSum = 0.0;
+            noiseAnalysisSampleCount = 0;
         }
 
         const auto expansion = calculateExpanderGain(linkedInput);
@@ -376,11 +413,15 @@ void RapReadyDSP::process(juce::AudioBuffer<float>& buffer) noexcept
         std::array<float, maxChannels> highs{};
         for (auto channel = 0; channel < channelCount; ++channel)
         {
-            auto& state = channels[static_cast<std::size_t>(channel)].deEsserLowState;
-            state = deEsserSplitCoefficient * state +
-                    (1.0f - deEsserSplitCoefficient) * values[static_cast<std::size_t>(channel)];
-            lows[static_cast<std::size_t>(channel)] = state;
-            highs[static_cast<std::size_t>(channel)] = values[static_cast<std::size_t>(channel)] - state;
+            auto& channelState = channels[static_cast<std::size_t>(channel)];
+            channelState.deEsserLowState1 =
+                deEsserSplitCoefficient * channelState.deEsserLowState1 +
+                (1.0f - deEsserSplitCoefficient) * values[static_cast<std::size_t>(channel)];
+            channelState.deEsserLowState2 = deEsserSplitCoefficient * channelState.deEsserLowState2 +
+                                            (1.0f - deEsserSplitCoefficient) * channelState.deEsserLowState1;
+            lows[static_cast<std::size_t>(channel)] = channelState.deEsserLowState2;
+            highs[static_cast<std::size_t>(channel)] =
+                values[static_cast<std::size_t>(channel)] - channelState.deEsserLowState2;
             fullPeak = std::max(fullPeak, std::abs(values[static_cast<std::size_t>(channel)]));
             highPeak = std::max(highPeak, std::abs(highs[static_cast<std::size_t>(channel)]));
         }
@@ -388,31 +429,33 @@ void RapReadyDSP::process(juce::AudioBuffer<float>& buffer) noexcept
 
         const auto compressionReduction = -(peakReductionDb + bodyReductionDb);
         const auto makeup = dbToGain(std::min(2.5f, compressionReduction * 0.35f));
-        maximumReduction =
-            std::max(maximumReduction, compressionReduction + gainToDb(1.0f / std::max(deEssGain, 0.0001f)));
+        const auto bypassMix = std::clamp(strength * 50.0f, 0.0f, 1.0f);
+        const auto dynamicsGain = expansion * peakGain * bodyGain * deEssGain;
 
         float linkedPreLimiterPeak = 0.0f;
         for (auto channel = 0; channel < channelCount; ++channel)
         {
             auto value = lows[static_cast<std::size_t>(channel)] +
                          highs[static_cast<std::size_t>(channel)] * deEssGain;
-            if (strength > 0.0001f)
-            {
-                value = channels[static_cast<std::size_t>(channel)].presence.process(value);
-                value = channels[static_cast<std::size_t>(channel)].airShelf.process(value);
-            }
+            value = channels[static_cast<std::size_t>(channel)].presence.process(value);
+            value = channels[static_cast<std::size_t>(channel)].airShelf.process(value);
 
             const auto soft = std::tanh(saturationDrive * value) / saturationDrive;
             value = value + (soft - value) * saturationMix;
             value *= makeup * outputGain;
-            if (strength > 0.0001f)
-                value = channels[static_cast<std::size_t>(channel)].lowPass.process(value);
+            value = channels[static_cast<std::size_t>(channel)].lowPass.process(value);
+            value = dryValues[static_cast<std::size_t>(channel)] +
+                    (value - dryValues[static_cast<std::size_t>(channel)]) * bypassMix;
             values[static_cast<std::size_t>(channel)] = value;
             linkedPreLimiterPeak = std::max(linkedPreLimiterPeak, std::abs(value));
         }
 
         const auto finalLimiterGain = calculateLimiterGain(linkedPreLimiterPeak);
-        maximumReduction = std::max(maximumReduction, gainToDb(1.0f / std::max(finalLimiterGain, 0.0001f)));
+        const auto effectiveLimiterGain = 1.0f + (finalLimiterGain - 1.0f) * bypassMix;
+        const auto effectiveDynamicsGain = 1.0f + (dynamicsGain - 1.0f) * bypassMix;
+        maximumReduction =
+            std::max(maximumReduction,
+                     gainToDb(1.0f / std::max(effectiveDynamicsGain * effectiveLimiterGain, 0.0001f)));
 
         const auto delaySize = static_cast<int>(delayLines[0].size());
         const auto readIndex = (delayWriteIndex + 1) % delaySize;
@@ -420,15 +463,13 @@ void RapReadyDSP::process(juce::AudioBuffer<float>& buffer) noexcept
         {
             auto& line = delayLines[static_cast<std::size_t>(channel)];
             line[static_cast<std::size_t>(delayWriteIndex)] = values[static_cast<std::size_t>(channel)];
-            const auto output = line[static_cast<std::size_t>(readIndex)] * finalLimiterGain;
+            const auto output = line[static_cast<std::size_t>(readIndex)] * effectiveLimiterGain;
             writePointers[static_cast<std::size_t>(channel)][sample] = output;
             blockOutputPeak = std::max(blockOutputPeak, std::abs(output));
         }
         delayWriteIndex = readIndex;
     }
 
-    const auto inputRms = std::sqrt(inputSquareSum / static_cast<double>(sampleCount * channelCount));
-    updateNoiseEstimate(gainToDb(static_cast<float>(inputRms)), sampleCount);
     inputLevelDb.store(gainToDb(blockInputPeak));
     outputLevelDb.store(gainToDb(blockOutputPeak));
     gainReductionDb.store(maximumReduction);

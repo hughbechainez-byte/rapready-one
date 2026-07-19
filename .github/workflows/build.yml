@@ -105,7 +105,7 @@ jobs:
           mkdir -p "$stage"
           ditto build/RapReadyOne_artefacts/Release/AU/*.component "$stage/RapReady One.component"
           ditto build/RapReadyOne_artefacts/Release/VST3/*.vst3 "$stage/RapReady One.vst3"
-          cp build/RapReadyOne_artefacts/Release/Standalone/* "$stage/" || true
+          ditto "build/RapReadyOne_artefacts/Release/Standalone/RapReady One.app" "$stage/RapReady One.app"
           cp README.md RESEARCH.md LICENSE.md "$stage/"
           cat > "$stage/INSTALL-macOS.txt" <<'EOF'
           Copy RapReady One.component to ~/Library/Audio/Plug-Ins/Components/ and restart Logic.

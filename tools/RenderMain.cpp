@@ -63,8 +63,9 @@ int main(int argc, char* argv[])
         const auto count =
             static_cast<int>(std::min<juce::int64>(blockSize, reader->lengthInSamples - inputPosition));
         block.clear();
-        reader->read(&block, 0, count, inputPosition, true, true);
-        dsp.process(block);
+        juce::AudioBuffer<float> activeBlock(block.getArrayOfWritePointers(), block.getNumChannels(), count);
+        reader->read(&activeBlock, 0, count, inputPosition, true, true);
+        dsp.process(activeBlock);
         auto start = 0;
         if (latencyRemaining > 0)
         {
@@ -75,7 +76,7 @@ int main(int argc, char* argv[])
         const auto writable = std::min<juce::int64>(count - start, reader->lengthInSamples - outputWritten);
         if (writable > 0)
         {
-            writer->writeFromAudioSampleBuffer(block, start, static_cast<int>(writable));
+            writer->writeFromAudioSampleBuffer(activeBlock, start, static_cast<int>(writable));
             outputWritten += writable;
         }
         inputPosition += count;
@@ -86,7 +87,8 @@ int main(int argc, char* argv[])
         const auto count =
             static_cast<int>(std::min<juce::int64>(blockSize, reader->lengthInSamples - outputWritten));
         block.clear();
-        dsp.process(block);
+        juce::AudioBuffer<float> activeBlock(block.getArrayOfWritePointers(), block.getNumChannels(), count);
+        dsp.process(activeBlock);
         auto start = 0;
         if (latencyRemaining > 0)
         {
@@ -97,7 +99,7 @@ int main(int argc, char* argv[])
         const auto writable = count - start;
         if (writable > 0)
         {
-            writer->writeFromAudioSampleBuffer(block, start, writable);
+            writer->writeFromAudioSampleBuffer(activeBlock, start, writable);
             outputWritten += writable;
         }
     }
