@@ -7,7 +7,7 @@ int main(int argc, char* argv[])
 {
     if (argc < 3 || argc > 4)
     {
-        std::cerr << "Usage: RapReadyRender <input-audio> <output.wav> [amount 0-100]\n";
+        std::cerr << "Usage: \"RapReady File Renderer\" <input-audio> <output.wav> [amount 0-100]\n";
         return 2;
     }
 

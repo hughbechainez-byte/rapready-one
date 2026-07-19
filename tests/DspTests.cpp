@@ -208,6 +208,24 @@ int main()
 
     {
         rapready::RapReadyDSP dsp;
+        dsp.setAmount(0.0f);
+        dsp.prepare(sampleRate, 128, 1);
+        const auto latency = dsp.getLatencySamples();
+
+        juce::AudioBuffer<float> oldDrySample(1, 1);
+        oldDrySample.setSample(0, 0, 1.5f);
+        dsp.process(oldDrySample);
+
+        dsp.setAmount(100.0f);
+        juce::AudioBuffer<float> transition(1, latency);
+        transition.clear();
+        dsp.process(transition);
+        check(std::abs(transition.getSample(0, latency - 1) - 1.5f) < 1.0e-5f,
+              "lookahead controls stay aligned with audio during knob automation");
+    }
+
+    {
+        rapready::RapReadyDSP dsp;
         dsp.setAmount(62.0f);
         dsp.prepare(192000.0, 257, 2);
         juce::AudioBuffer<float> buffer(2, 4096);

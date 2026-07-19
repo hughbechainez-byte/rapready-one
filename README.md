@@ -29,6 +29,8 @@ The plug-in exposes only the **Rap Ready** automation parameter. Input, output, 
 | LPF | 20 kHz, moving to 18 kHz only near the top of the knob |
 | Limiter | stereo-linked, 2 ms lookahead; −0.3 to −1.2 dBFS sample-peak ceiling |
 
+At 0%, the signal is an exact latency-aligned dry path. A short crossfade immediately above 0% keeps bypass automation click-free; the limiter ceiling is guaranteed once that crossfade is fully engaged, not while automating through the near-zero transition.
+
 ## Recording setup
 
 Use a pop filter, reduce room reflections, and keep microphone distance consistent. Set interface gain so normal rap peaks land near **−12 dBFS**, never clipped. The UI reports READY between −18 and −3 dBFS; the −12 dBFS line is the preferred center, not a hard rule.
@@ -55,7 +57,7 @@ The CI artifact is an ad-hoc-signed development build, not Apple-notarized comme
 
 ## Build and test
 
-Prerequisites: CMake 3.22+, Git, and either Visual Studio 2022 with **Desktop development with C++** on Windows or current Xcode command-line tools on macOS.
+Prerequisites: CMake 3.24+, Git, Python 3 for the renderer regression, and either Visual Studio 2022 with **Desktop development with C++** on Windows or current Xcode command-line tools on macOS.
 
 ```powershell
 cmake -S . -B build -G "Visual Studio 17 2022" -A x64
@@ -76,4 +78,3 @@ Automation runs deterministic DSP tests at multiple sample rates, `pluginval` st
 This repository is released under **GNU AGPLv3** because JUCE 8 is used under its AGPLv3 option. Closed-source or commercial distribution may require a JUCE commercial license; review the current JUCE terms before changing the distribution model.
 
 The evidence and design limits behind the default are recorded in [RESEARCH.md](RESEARCH.md).
-

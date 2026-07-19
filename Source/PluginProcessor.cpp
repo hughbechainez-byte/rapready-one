@@ -11,6 +11,11 @@ RapReadyOneAudioProcessor::RapReadyOneAudioProcessor()
     amountParameter = parameters.getRawParameterValue("amount");
 }
 
+const juce::String RapReadyOneAudioProcessor::getName() const
+{
+    return JucePlugin_Name;
+}
+
 juce::AudioProcessorValueTreeState::ParameterLayout RapReadyOneAudioProcessor::createParameterLayout()
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;

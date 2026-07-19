@@ -1,6 +1,8 @@
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.24)
 
 project(RapReadyOne VERSION 0.1.0 LANGUAGES CXX)
+
+include(CTest)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -80,18 +82,6 @@ target_compile_definitions(RapReadyOne PUBLIC
     JUCE_USE_CURL=0
 )
 
-juce_add_console_app(RapReadyTests PRODUCT_NAME "RapReady DSP Tests")
-set_target_properties(RapReadyTests PROPERTIES OUTPUT_NAME "RapReady DSP Tests")
-target_sources(RapReadyTests PRIVATE tests/DspTests.cpp)
-target_link_libraries(RapReadyTests PRIVATE
-    RapReadyOne
-    RapReadyDSP
-    juce::juce_audio_formats
-    juce::juce_audio_processors
-    juce::juce_recommended_config_flags
-    juce::juce_recommended_warning_flags
-)
-
 juce_add_console_app(RapReadyRender PRODUCT_NAME "RapReady File Renderer")
 set_target_properties(RapReadyRender PROPERTIES OUTPUT_NAME "RapReady File Renderer")
 target_sources(RapReadyRender PRIVATE tools/RenderMain.cpp)
@@ -102,11 +92,23 @@ target_link_libraries(RapReadyRender PRIVATE
     juce::juce_recommended_warning_flags
 )
 
-enable_testing()
-add_test(NAME RapReadyDSP COMMAND RapReadyTests)
+if(BUILD_TESTING)
+    juce_add_console_app(RapReadyTests PRODUCT_NAME "RapReady DSP Tests")
+    set_target_properties(RapReadyTests PROPERTIES OUTPUT_NAME "RapReady DSP Tests")
+    target_sources(RapReadyTests PRIVATE tests/DspTests.cpp)
+    target_link_libraries(RapReadyTests PRIVATE
+        # Link processor implementations without inheriting plugin-wrapper compile definitions.
+        $<LINK_ONLY:RapReadyOne>
+        RapReadyDSP
+        juce::juce_audio_formats
+        juce::juce_audio_processors
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+    )
 
-find_package(Python3 COMPONENTS Interpreter QUIET)
-if(Python3_Interpreter_FOUND)
+    add_test(NAME RapReadyDSP COMMAND RapReadyTests)
+
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
     add_test(
         NAME RapReadyRendererTail
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/renderer_tail_test.py

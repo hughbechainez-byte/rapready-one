@@ -81,7 +81,7 @@ class RapReadyDSP final
     void updateNoiseEstimate(float blockRmsDb, int sampleCount) noexcept;
     float calculateExpanderGain(float linkedPeak) noexcept;
     float calculateDeEsserGain(float linkedFullPeak, float linkedHighPeak) noexcept;
-    float calculateLimiterGain(float linkedPeak) noexcept;
+    float calculateLimiterGain(float linkedPeak, float delayedCeiling, bool limiterEnabled) noexcept;
     static float dbToGain(float decibels) noexcept;
     static float gainToDb(float gain) noexcept;
     static float smoothStep(float value) noexcept;
@@ -104,6 +104,9 @@ class RapReadyDSP final
     std::array<std::vector<float>, maxChannels> delayLines;
     std::vector<float> limiterQueueValues;
     std::vector<std::uint64_t> limiterQueueIndices;
+    std::vector<float> limiterMixDelay;
+    std::vector<float> limiterCeilingDelay;
+    std::vector<float> dynamicsGainDelay;
     std::uint64_t limiterSampleIndex = 0;
     std::uint64_t controlSampleCounter = 0;
     double noiseAnalysisSquareSum = 0.0;

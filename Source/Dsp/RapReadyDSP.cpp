@@ -153,6 +153,9 @@ void RapReadyDSP::prepare(double newSampleRate, int, int channelCount)
         line.assign(static_cast<std::size_t>(lookaheadSamples + 1), 0.0f);
     limiterQueueValues.assign(static_cast<std::size_t>(lookaheadSamples + 1), 0.0f);
     limiterQueueIndices.assign(static_cast<std::size_t>(lookaheadSamples + 1), 0);
+    limiterMixDelay.assign(static_cast<std::size_t>(lookaheadSamples + 1), 0.0f);
+    limiterCeilingDelay.assign(static_cast<std::size_t>(lookaheadSamples + 1), 1.0f);
+    dynamicsGainDelay.assign(static_cast<std::size_t>(lookaheadSamples + 1), 1.0f);
 
     amountSmoothingCoefficient = timeCoefficient(sampleRate, 45.0f);
     reset();
@@ -167,6 +170,9 @@ void RapReadyDSP::reset()
         std::fill(line.begin(), line.end(), 0.0f);
     std::fill(limiterQueueValues.begin(), limiterQueueValues.end(), 0.0f);
     std::fill(limiterQueueIndices.begin(), limiterQueueIndices.end(), 0);
+    std::fill(limiterMixDelay.begin(), limiterMixDelay.end(), 0.0f);
+    std::fill(limiterCeilingDelay.begin(), limiterCeilingDelay.end(), 1.0f);
+    std::fill(dynamicsGainDelay.begin(), dynamicsGainDelay.end(), 1.0f);
 
     peakCompressor.reset();
     bodyCompressor.reset();
@@ -296,7 +302,7 @@ float RapReadyDSP::calculateDeEsserGain(float linkedFullPeak, float linkedHighPe
     return deEsserGain;
 }
 
-float RapReadyDSP::calculateLimiterGain(float linkedPeak) noexcept
+float RapReadyDSP::calculateLimiterGain(float linkedPeak, float delayedCeiling, bool limiterEnabled) noexcept
 {
     if (limiterQueueValues.empty())
         return 1.0f;
@@ -327,9 +333,10 @@ float RapReadyDSP::calculateLimiterGain(float linkedPeak) noexcept
 
     const auto windowPeak = limiterQueueValues[static_cast<std::size_t>(limiterQueueHead)];
     ++limiterSampleIndex;
-    const auto wanted = strength < 0.0001f || windowPeak <= limiterCeiling
+    const auto ceiling = std::clamp(delayedCeiling, 0.000001f, 1.0f);
+    const auto wanted = !limiterEnabled || windowPeak <= ceiling
                             ? 1.0f
-                            : limiterCeiling / std::max(windowPeak, 0.000001f);
+                            : ceiling / std::max(windowPeak, 0.000001f);
     limiterGain = wanted < limiterGain
                       ? wanted
                       : limiterReleaseCoefficient * limiterGain + (1.0f - limiterReleaseCoefficient) * wanted;
@@ -450,15 +457,23 @@ void RapReadyDSP::process(juce::AudioBuffer<float>& buffer) noexcept
             linkedPreLimiterPeak = std::max(linkedPreLimiterPeak, std::abs(value));
         }
 
-        const auto finalLimiterGain = calculateLimiterGain(linkedPreLimiterPeak);
-        const auto effectiveLimiterGain = 1.0f + (finalLimiterGain - 1.0f) * bypassMix;
-        const auto effectiveDynamicsGain = 1.0f + (dynamicsGain - 1.0f) * bypassMix;
+        const auto delaySize = static_cast<int>(delayLines[0].size());
+        const auto readIndex = (delayWriteIndex + 1) % delaySize;
+        limiterMixDelay[static_cast<std::size_t>(delayWriteIndex)] = bypassMix;
+        limiterCeilingDelay[static_cast<std::size_t>(delayWriteIndex)] = limiterCeiling;
+        dynamicsGainDelay[static_cast<std::size_t>(delayWriteIndex)] = dynamicsGain;
+        const auto delayedBypassMix = limiterMixDelay[static_cast<std::size_t>(readIndex)];
+        const auto delayedCeiling = limiterCeilingDelay[static_cast<std::size_t>(readIndex)];
+        const auto delayedDynamicsGain = dynamicsGainDelay[static_cast<std::size_t>(readIndex)];
+
+        const auto finalLimiterGain =
+            calculateLimiterGain(linkedPreLimiterPeak, delayedCeiling, delayedBypassMix > 0.0001f);
+        const auto effectiveLimiterGain = 1.0f + (finalLimiterGain - 1.0f) * delayedBypassMix;
+        const auto effectiveDynamicsGain = 1.0f + (delayedDynamicsGain - 1.0f) * delayedBypassMix;
         maximumReduction =
             std::max(maximumReduction,
                      gainToDb(1.0f / std::max(effectiveDynamicsGain * effectiveLimiterGain, 0.0001f)));
 
-        const auto delaySize = static_cast<int>(delayLines[0].size());
-        const auto readIndex = (delayWriteIndex + 1) % delaySize;
         for (auto channel = 0; channel < channelCount; ++channel)
         {
             auto& line = delayLines[static_cast<std::size_t>(channel)];
