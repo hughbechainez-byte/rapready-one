@@ -26,12 +26,12 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Configure Windows
         if: runner.os == 'Windows'
         shell: pwsh
-        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+        run: cmake -S . -B build
 
       - name: Configure macOS universal
         if: runner.os == 'macOS'
@@ -117,7 +117,7 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent "$stage" "build/${{ matrix.package }}.zip"
 
       - name: Upload package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.package }}
           path: build/${{ matrix.package }}.zip
@@ -128,7 +128,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
       - name: Publish GitHub Release
@@ -136,4 +136,3 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${GITHUB_REF_NAME}" dist/*/*.zip --repo "${GITHUB_REPOSITORY}" --generate-notes --title "RapReady One ${GITHUB_REF_NAME}"
-
