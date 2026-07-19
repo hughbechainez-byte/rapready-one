@@ -1,4 +1,5 @@
 #include "Dsp/RapReadyDSP.h"
+#include "PluginProcessor.h"
 
 #include <algorithm>
 #include <cmath>
@@ -226,6 +227,34 @@ int main()
         processInPartitions(dsp, silence, 113);
         check(silence.getMagnitude(0, 0, silence.getNumSamples()) == 0.0f,
               "reset clears filter, detector, queue, and delay state");
+    }
+
+    {
+        RapReadyOneAudioProcessor processor;
+        processor.setPlayConfigDetails(2, 2, sampleRate, 512);
+        processor.prepareToPlay(sampleRate, 512);
+        check(processor.getLatencySamples() == static_cast<int>(std::round(sampleRate * 0.002)),
+              "plugin wrapper reports the prepared 2 ms latency to the host");
+
+        juce::AudioBuffer<float> buffer(2, 2048);
+        juce::MidiBuffer midi;
+        for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+            for (int i = 0; i < buffer.getNumSamples(); ++i)
+                buffer.setSample(channel, i,
+                                 0.15f *
+                                     std::sin(juce::MathConstants<double>::twoPi * 330.0 * i / sampleRate));
+        processor.processBlock(buffer, midi);
+        check(allFinite(buffer), "plugin wrapper processes a stereo host buffer");
+
+        if (auto* amount = processor.parameters.getParameter("amount"))
+            amount->setValueNotifyingHost(0.83f);
+        juce::MemoryBlock savedState;
+        processor.getStateInformation(savedState);
+        RapReadyOneAudioProcessor restored;
+        restored.setStateInformation(savedState.getData(), static_cast<int>(savedState.getSize()));
+        const auto* restoredAmount = restored.parameters.getRawParameterValue("amount");
+        check(restoredAmount != nullptr && std::abs(restoredAmount->load() - 83.0f) < 0.2f,
+              "plugin automation state survives save and restore");
     }
 
     std::cout << (failures == 0 ? "ALL DSP TESTS PASSED\n" : "DSP TESTS FAILED\n");

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Dsp/RapReadyDSP.h"
-#include <JuceHeader.h>
+#include <juce_audio_processors/juce_audio_processors.h>
 
 class RapReadyOneAudioProcessor final : public juce::AudioProcessor
 {

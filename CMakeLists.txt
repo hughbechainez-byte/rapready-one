@@ -84,8 +84,10 @@ juce_add_console_app(RapReadyTests PRODUCT_NAME "RapReady DSP Tests")
 set_target_properties(RapReadyTests PROPERTIES OUTPUT_NAME "RapReady DSP Tests")
 target_sources(RapReadyTests PRIVATE tests/DspTests.cpp)
 target_link_libraries(RapReadyTests PRIVATE
+    RapReadyOne
     RapReadyDSP
     juce::juce_audio_formats
+    juce::juce_audio_processors
     juce::juce_recommended_config_flags
     juce::juce_recommended_warning_flags
 )
@@ -102,3 +104,12 @@ target_link_libraries(RapReadyRender PRIVATE
 
 enable_testing()
 add_test(NAME RapReadyDSP COMMAND RapReadyTests)
+
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND)
+    add_test(
+        NAME RapReadyRendererTail
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/renderer_tail_test.py
+                $<TARGET_FILE:RapReadyRender>
+    )
+endif()

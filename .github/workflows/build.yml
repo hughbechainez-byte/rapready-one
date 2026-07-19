@@ -59,8 +59,12 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           component=$(find build/RapReadyOne_artefacts/Release/AU -maxdepth 1 -name '*.component' -print -quit)
-          test -n "$component"
+          vst3=$(find build/RapReadyOne_artefacts/Release/VST3 -maxdepth 1 -name '*.vst3' -print -quit)
+          standalone=$(find build/RapReadyOne_artefacts/Release/Standalone -maxdepth 1 -name '*.app' -print -quit)
+          test -n "$component" && test -n "$vst3" && test -n "$standalone"
           codesign --force --deep --sign - "$component"
+          codesign --force --deep --sign - "$vst3"
+          codesign --force --deep --sign - "$standalone"
           mkdir -p "$HOME/Library/Audio/Plug-Ins/Components"
           ditto "$component" "$HOME/Library/Audio/Plug-Ins/Components/$(basename "$component")"
           killall -9 AudioComponentRegistrar 2>/dev/null || true

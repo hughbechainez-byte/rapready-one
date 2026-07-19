@@ -9,4 +9,5 @@
 *.wav
 *.aif
 *.aiff
-
+__pycache__/
+*.pyc
