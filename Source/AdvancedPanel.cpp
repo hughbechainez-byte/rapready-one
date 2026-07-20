@@ -9,9 +9,8 @@ const std::array<juce::String, 6> stageNames{
 };
 
 const std::array<juce::String, 6> stageLowHigh{
-    "LOW fuller / HIGH tighter",    "LOW natural / HIGH quieter",
-    "LOW dynamic / HIGH dense",     "LOW crisp / HIGH softer",
-    "LOW clean / HIGH warmer",      "LOW headroom / HIGH firmer",
+    "LO FULL / HI TIGHT", "LO NAT / HI QUIET", "LO OPEN / HI DENSE",
+    "LO BRIGHT / HI SOFT", "LO CLEAN / HI WARM", "LO OPEN / HI FIRM",
 };
 
 const std::array<juce::String, 6> stageDescriptions{
@@ -61,16 +60,9 @@ RapReadyAdvancedPanel::RapReadyAdvancedPanel(juce::AudioProcessorValueTreeState&
     {
         eqSliders[i] = std::make_unique<DescribedSlider>();
         configureSlider(*eqSliders[i], "EQ " + eqNames[i], eqDescriptions[i], 0.0);
+        eqSliders[i]->setTextBoxStyle(juce::Slider::NoTextBox, true, 0, 0);
         eqAttachments[i] = std::make_unique<SliderAttachment>(
             parameters, rapready::parameters::eqIds[i], *eqSliders[i]);
-        eqSliders[i]->textFromValueFunction = [](double value)
-        {
-            return juce::String(value, 1);
-        };
-        eqSliders[i]->valueFromTextFunction = [](const juce::String& text)
-        {
-            return text.getDoubleValue();
-        };
         addAndMakeVisible(*eqSliders[i]);
     }
 
@@ -296,8 +288,8 @@ void RapReadyAdvancedPanel::paint(juce::Graphics& g)
     g.setFont(juce::Font(juce::FontOptions(10.5f, juce::Font::bold)));
     g.drawFittedText("STAGE MACROS  //  50 = RESEARCH DEFAULT", 14, 98, getWidth() - 28, 20,
                      juce::Justification::centredLeft, 1);
-    g.drawFittedText("10-BAND VOCAL EQ  //  LOW CUTS  •  HIGH BOOSTS  •  DOUBLE-CLICK = FLAT", 14,
-                     eqBounds[0].getY() - 29, getWidth() - 28, 20,
+    g.drawFittedText("10-BAND VOCAL EQ  //  -6 CUT  •  +6 BOOST  •  DOUBLE-CLICK = FLAT", 14,
+                     eqBounds[0].getY() - 42, getWidth() - 28, 18,
                      juce::Justification::centredLeft, 1);
 
     for (std::size_t i = 0; i < stageBounds.size(); ++i)
@@ -308,9 +300,9 @@ void RapReadyAdvancedPanel::paint(juce::Graphics& g)
         g.drawText(stageNames[i], bounds.getX() - 8, bounds.getY() - 22, bounds.getWidth() + 16, 18,
                    juce::Justification::centred);
         g.setColour(palette.muted);
-        g.setFont(juce::Font(juce::FontOptions(8.5f)));
+        g.setFont(juce::Font(juce::FontOptions(7.7f, juce::Font::bold)));
         g.drawFittedText(stageLowHigh[i], bounds.getX() - 12, bounds.getBottom() + 2,
-                         bounds.getWidth() + 24, 24, juce::Justification::centred, 2);
+                         bounds.getWidth() + 24, 17, juce::Justification::centred, 1);
     }
 
     for (std::size_t i = 0; i < eqBounds.size(); ++i)
@@ -326,10 +318,15 @@ void RapReadyAdvancedPanel::paint(juce::Graphics& g)
                    juce::Justification::centred);
         g.drawText("-6 CUT", bounds.getX() - 3, bounds.getBottom() - 46, bounds.getWidth() + 6, 13,
                    juce::Justification::centred);
+        g.setColour(palette.text);
+        g.setFont(juce::Font(juce::FontOptions(8.6f, juce::Font::bold)));
+        g.drawFittedText(juce::String(eqSliders[i]->getValue(), 1), bounds.getX() - 4,
+                         bounds.getBottom() + 2, bounds.getWidth() + 8, 13,
+                         juce::Justification::centred, 1);
         g.setColour(palette.muted);
-        g.setFont(juce::Font(juce::FontOptions(7.6f, juce::Font::bold)));
-        g.drawFittedText(eqRoles[i], bounds.getX() - 5, bounds.getBottom() + 1, bounds.getWidth() + 10,
-                         18, juce::Justification::centred, 1);
+        g.setFont(juce::Font(juce::FontOptions(7.1f, juce::Font::bold)));
+        g.drawFittedText(eqRoles[i], bounds.getX() - 5, bounds.getBottom() + 17,
+                         bounds.getWidth() + 10, 13, juce::Justification::centred, 1);
     }
 }
 
