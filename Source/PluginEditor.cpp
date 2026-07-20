@@ -7,9 +7,9 @@
 namespace
 {
 constexpr int mainPanelWidth = 520;
-constexpr int pluginCollapsedHeight = 640;
-constexpr int standaloneCollapsedHeight = 790;
-constexpr int advancedWidth = 600;
+constexpr int pluginCollapsedHeight = 620;
+constexpr int standaloneCollapsedHeight = 640;
+constexpr int advancedWidth = 380;
 
 rapready::AdvancedSettings advancedFromSnapshot(
     const rapready::parameters::AudioSnapshot& snapshot)
@@ -263,7 +263,7 @@ RapReadyOneAudioProcessorEditor::RapReadyOneAudioProcessorEditor(
     addAndMakeVisible(progressBar);
 
     setResizable(true, true);
-    setResizeLimits(mainPanelWidth, standaloneMode ? 760 : 600, 1500, 1000);
+    setResizeLimits(mainPanelWidth, standaloneMode ? standaloneCollapsedHeight : 600, 1500, 1000);
     setSize(mainPanelWidth, standaloneMode ? standaloneCollapsedHeight : pluginCollapsedHeight);
     applyTheme(themeSelector.getSelectedItemIndex());
     startTimerHz(30);
@@ -376,7 +376,7 @@ void RapReadyOneAudioProcessorEditor::paint(juce::Graphics& g)
         g.fillEllipse(static_cast<float>(x + stageWidth / 2 - 2), 121.0f, 4.0f, 4.0f);
     }
 
-    const auto meterY = 468;
+    const auto meterY = 400;
     const auto meterWidth = 218;
     const auto drawMeter = [&](int left, float db, bool brighter, const juce::String& label)
     {
@@ -401,22 +401,24 @@ void RapReadyOneAudioProcessorEditor::paint(juce::Graphics& g)
                                                 : "WAITING FOR VOCAL";
     g.setColour(inputDb > -3.0f ? palette.bright : inputDb > -18.0f ? palette.base : palette.muted);
     g.setFont(juce::Font(juce::FontOptions(12.5f, juce::Font::bold)));
-    g.drawFittedText(inputStatus, 24, 508, mainPanelWidth - 48, 20,
+    g.drawFittedText(inputStatus, 24, 438, mainPanelWidth - 48, 20,
                      juce::Justification::centred, 1);
     g.setColour(palette.muted);
     g.setFont(juce::Font(juce::FontOptions(10.0f)));
     g.drawFittedText("PEAK NEAR -12 dBFS  //  GR " + juce::String(reductionDb, 1) +
                          " dB  //  NOISE " + juce::String(noiseFloorDb, 0) + " dBFS",
-                     20, 532, mainPanelWidth - 40, 18, juce::Justification::centred, 1);
+                     20, 462, mainPanelWidth - 40, 18, juce::Justification::centred, 1);
     g.setColour(palette.text);
     g.setFont(juce::Font(juce::FontOptions(10.0f, juce::Font::bold)));
-    g.drawFittedText("35 CLEAN       62 RAP DEFAULT       85 POLISH", 20, 568,
+    g.drawFittedText("35 CLEAN       62 RAP DEFAULT       85 POLISH", 20, 490,
                      mainPanelWidth - 40, 18, juce::Justification::centred, 1);
 
     if (standaloneMode)
     {
-        auto drop = juce::Rectangle<float>(20.0f, 612.0f, 480.0f,
-                                           static_cast<float>(std::max(150, getHeight() - 632)));
+        constexpr float dropTop = 514.0f;
+        const auto dropBottom = static_cast<float>(getHeight() - 79);
+        auto drop = juce::Rectangle<float>(20.0f, dropTop, 480.0f,
+                                           std::max(44.0f, dropBottom - dropTop));
         g.setColour(dragHighlighted ? palette.dark.brighter(0.2f) : juce::Colours::black);
         g.fillRoundedRectangle(drop, 5.0f);
         g.setColour(dragHighlighted ? palette.bright : palette.base);
@@ -428,14 +430,14 @@ void RapReadyOneAudioProcessorEditor::paint(juce::Graphics& g)
         g.strokePath(dashed, juce::PathStrokeType(1.0f));
         g.setColour(palette.text);
         g.setFont(juce::Font(juce::FontOptions(14.0f, juce::Font::bold)));
-        g.drawText(dragHighlighted ? "RELEASE TO CLEAN" : "DROP A VOCAL RECORDING", 30, 620, 460, 24,
+        g.drawText(dragHighlighted ? "RELEASE TO CLEAN" : "DROP A VOCAL RECORDING", 30, 516, 460, 20,
                    juce::Justification::centred);
         g.setColour(palette.muted);
         g.setFont(juce::Font(juce::FontOptions(9.7f, juce::Font::bold)));
         g.drawText("WAV  //  AIFF  //  FLAC  //  OGG  //  MP3    ->    24-BIT WAV",
-                   30, 642, 460, 18, juce::Justification::centred);
+                   30, 536, 460, 15, juce::Justification::centred);
         if (selectedInputName.isNotEmpty())
-            g.drawFittedText(selectedInputName, 30, 653, 460, 15,
+            g.drawFittedText(selectedInputName, 30, 550, 460, 13,
                              juce::Justification::centred, 1);
     }
     g.restoreState();
@@ -443,24 +445,26 @@ void RapReadyOneAudioProcessorEditor::paint(juce::Graphics& g)
 
 void RapReadyOneAudioProcessorEditor::resized()
 {
-    amountKnob.setBounds(98, 126, 324, 324);
+    amountKnob.setBounds(111, 122, 298, 270);
     advancedButton.setBounds(28, 68, 132, 26);
     themeSelector.setBounds(393, 68, 98, 26);
 
     if (standaloneMode)
     {
-        browseButton.setBounds(30, 673, 130, 29);
-        cancelButton.setBounds(170, 673, 110, 29);
-        revealButton.setBounds(290, 673, 200, 29);
-        progressBar.setBounds(30, 712, 460, 8);
-        renderStatus.setBounds(30, 724, 460, 40);
+        const auto buttonY = getHeight() - 72;
+        browseButton.setBounds(30, buttonY, 130, 27);
+        cancelButton.setBounds(170, buttonY, 110, 27);
+        revealButton.setBounds(290, buttonY, 200, 27);
+        progressBar.setBounds(30, getHeight() - 36, 460, 6);
+        renderStatus.setBounds(30, getHeight() - 28, 460, 22);
     }
 
     if (advancedVisible)
     {
         const auto x = std::min(mainPanelWidth, getWidth());
         advancedViewport.setBounds(x, 0, std::max(0, getWidth() - x), getHeight());
-        advancedPanel.setSize(advancedWidth, std::max(760, getHeight()));
+        advancedPanel.setSize(std::max(advancedWidth, advancedViewport.getWidth()),
+                              std::max(600, advancedViewport.getHeight()));
     }
 }
 
@@ -471,12 +475,14 @@ void RapReadyOneAudioProcessorEditor::toggleAdvanced()
     advancedViewport.setVisible(advancedVisible);
     if (advancedVisible)
     {
-        setResizeLimits(900, standaloneMode ? 760 : 640, 1500, 1000);
-        setSize(mainPanelWidth + advancedWidth, standaloneMode ? 820 : 760);
+        setResizeLimits(mainPanelWidth + advancedWidth,
+                        standaloneMode ? standaloneCollapsedHeight : 600, 1500, 1000);
+        setSize(mainPanelWidth + advancedWidth,
+                standaloneMode ? standaloneCollapsedHeight : pluginCollapsedHeight);
     }
     else
     {
-        setResizeLimits(mainPanelWidth, standaloneMode ? 760 : 600, 1500, 1000);
+        setResizeLimits(mainPanelWidth, standaloneMode ? standaloneCollapsedHeight : 600, 1500, 1000);
         setSize(mainPanelWidth, standaloneMode ? standaloneCollapsedHeight : pluginCollapsedHeight);
     }
     resized();

@@ -77,7 +77,7 @@ RapReadyAdvancedPanel::RapReadyAdvancedPanel(juce::AudioProcessorValueTreeState&
 
     infoLabel.setJustificationType(juce::Justification::centredLeft);
     infoLabel.setMinimumHorizontalScale(0.72f);
-    infoLabel.setFont(juce::Font(juce::FontOptions(12.5f)));
+    infoLabel.setFont(juce::Font(juce::FontOptions(11.5f)));
     infoLabel.setText("Move a control for a plain-language LOW/HIGH explanation.", juce::dontSendNotification);
     addAndMakeVisible(infoLabel);
 
@@ -89,7 +89,7 @@ void RapReadyAdvancedPanel::configureSlider(DescribedSlider& slider, const juce:
                                              const juce::String& description, double defaultValue)
 {
     slider.setSliderStyle(juce::Slider::LinearVertical);
-    slider.setTextBoxStyle(juce::Slider::TextBoxBelow, true, 64, 25);
+    slider.setTextBoxStyle(juce::Slider::TextBoxBelow, true, 48, 23);
     slider.setPopupDisplayEnabled(true, false, this);
     slider.setDoubleClickReturnValue(true, defaultValue);
     slider.setTitle(title);
@@ -280,16 +280,17 @@ void RapReadyAdvancedPanel::paint(juce::Graphics& g)
     g.drawVerticalLine(1, 0.0f, static_cast<float>(getHeight()));
 
     g.setColour(palette.text);
-    g.setFont(juce::Font(juce::FontOptions(18.0f, juce::Font::bold)));
-    g.drawText("ADVANCED // VOCAL CONTROL", 18, 10, getWidth() - 230, 28,
-               juce::Justification::centredLeft);
+    g.setFont(juce::Font(juce::FontOptions(17.0f, juce::Font::bold)));
+    g.drawFittedText("ADVANCED // CONTROL", 18, 9, getWidth() - 216, 28,
+                     juce::Justification::centredLeft, 1);
 
     g.setColour(palette.base);
     g.setFont(juce::Font(juce::FontOptions(10.5f, juce::Font::bold)));
-    g.drawText("STAGE MACROS  //  50 = RESEARCH DEFAULT", 18, 104, getWidth() - 36, 20,
-               juce::Justification::centredLeft);
-    g.drawText("10-BAND VOCAL EQ  //  LOW CUTS  •  HIGH BOOSTS  •  DOUBLE-CLICK = FLAT", 18,
-               eqBounds[0].getY() - 29, getWidth() - 36, 20, juce::Justification::centredLeft);
+    g.drawFittedText("STAGE MACROS  //  50 = RESEARCH DEFAULT", 14, 98, getWidth() - 28, 20,
+                     juce::Justification::centredLeft, 1);
+    g.drawFittedText("10-BAND VOCAL EQ  //  LOW CUTS  •  HIGH BOOSTS  •  DOUBLE-CLICK = FLAT", 14,
+                     eqBounds[0].getY() - 29, getWidth() - 28, 20,
+                     juce::Justification::centredLeft, 1);
 
     for (std::size_t i = 0; i < stageBounds.size(); ++i)
     {
@@ -326,27 +327,27 @@ void RapReadyAdvancedPanel::paint(juce::Graphics& g)
 
 void RapReadyAdvancedPanel::resized()
 {
-    previousButton.setBounds(getWidth() - 208, 10, 92, 28);
-    resetButton.setBounds(getWidth() - 106, 10, 88, 28);
-    infoLabel.setBounds(18, 49, getWidth() - 36, 48);
+    previousButton.setBounds(getWidth() - 190, 10, 86, 27);
+    resetButton.setBounds(getWidth() - 94, 10, 80, 27);
+    infoLabel.setBounds(14, 44, getWidth() - 28, 47);
 
-    const auto stageTop = 142;
-    const auto stageHeight = juce::jlimit(150, 215, (getHeight() - 250) * 42 / 100);
-    const auto stageCell = (getWidth() - 32) / static_cast<int>(stageSliders.size());
+    const auto stageTop = 130;
+    const auto stageHeight = juce::jlimit(135, 180, (getHeight() - 210) * 42 / 100);
+    const auto stageCell = (getWidth() - 20) / static_cast<int>(stageSliders.size());
     for (std::size_t i = 0; i < stageSliders.size(); ++i)
     {
-        const auto centre = 16 + static_cast<int>(i) * stageCell + stageCell / 2;
-        stageBounds[i] = {centre - 31, stageTop, 62, stageHeight};
+        const auto centre = 10 + static_cast<int>(i) * stageCell + stageCell / 2;
+        stageBounds[i] = {centre - 24, stageTop, 48, stageHeight};
         stageSliders[i]->setBounds(stageBounds[i]);
     }
 
-    const auto eqTop = stageTop + stageHeight + 76;
-    const auto eqHeight = juce::jmax(130, getHeight() - eqTop - 54);
-    const auto eqCell = (getWidth() - 24) / static_cast<int>(eqSliders.size());
+    const auto eqTop = stageTop + stageHeight + 62;
+    const auto eqHeight = juce::jmax(120, getHeight() - eqTop - 42);
+    const auto eqCell = (getWidth() - 16) / static_cast<int>(eqSliders.size());
     for (std::size_t i = 0; i < eqSliders.size(); ++i)
     {
-        const auto centre = 12 + static_cast<int>(i) * eqCell + eqCell / 2;
-        eqBounds[i] = {centre - 22, eqTop, 44, eqHeight};
+        const auto centre = 8 + static_cast<int>(i) * eqCell + eqCell / 2;
+        eqBounds[i] = {centre - 14, eqTop, 28, eqHeight};
         eqSliders[i]->setBounds(eqBounds[i]);
     }
 }
