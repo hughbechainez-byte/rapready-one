@@ -430,14 +430,14 @@ void RapReadyOneAudioProcessorEditor::paint(juce::Graphics& g)
         g.strokePath(dashed, juce::PathStrokeType(1.0f));
         g.setColour(palette.text);
         g.setFont(juce::Font(juce::FontOptions(14.0f, juce::Font::bold)));
-        g.drawText(dragHighlighted ? "RELEASE TO CLEAN" : "DROP A VOCAL RECORDING", 30, 516, 460, 20,
+        g.drawText(dragHighlighted ? "RELEASE TO CLEAN" : "DROP A VOCAL RECORDING", 30, 516, 460, 18,
                    juce::Justification::centred);
         g.setColour(palette.muted);
         g.setFont(juce::Font(juce::FontOptions(9.7f, juce::Font::bold)));
         g.drawText("WAV  //  AIFF  //  FLAC  //  OGG  //  MP3    ->    24-BIT WAV",
-                   30, 536, 460, 15, juce::Justification::centred);
+                   30, 534, 460, 13, juce::Justification::centred);
         if (selectedInputName.isNotEmpty())
-            g.drawFittedText(selectedInputName, 30, 550, 460, 13,
+            g.drawFittedText(selectedInputName, 30, 548, 460, 11,
                              juce::Justification::centred, 1);
     }
     g.restoreState();

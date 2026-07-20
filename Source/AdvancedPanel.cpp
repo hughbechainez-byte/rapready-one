@@ -63,6 +63,14 @@ RapReadyAdvancedPanel::RapReadyAdvancedPanel(juce::AudioProcessorValueTreeState&
         configureSlider(*eqSliders[i], "EQ " + eqNames[i], eqDescriptions[i], 0.0);
         eqAttachments[i] = std::make_unique<SliderAttachment>(
             parameters, rapready::parameters::eqIds[i], *eqSliders[i]);
+        eqSliders[i]->textFromValueFunction = [](double value)
+        {
+            return juce::String(value, 1);
+        };
+        eqSliders[i]->valueFromTextFunction = [](const juce::String& text)
+        {
+            return text.getDoubleValue();
+        };
         addAndMakeVisible(*eqSliders[i]);
     }
 
@@ -331,7 +339,7 @@ void RapReadyAdvancedPanel::resized()
     resetButton.setBounds(getWidth() - 94, 10, 80, 27);
     infoLabel.setBounds(14, 44, getWidth() - 28, 47);
 
-    const auto stageTop = 130;
+    const auto stageTop = 142;
     const auto stageHeight = juce::jlimit(135, 180, (getHeight() - 210) * 42 / 100);
     const auto stageCell = (getWidth() - 20) / static_cast<int>(stageSliders.size());
     for (std::size_t i = 0; i < stageSliders.size(); ++i)
@@ -347,7 +355,7 @@ void RapReadyAdvancedPanel::resized()
     for (std::size_t i = 0; i < eqSliders.size(); ++i)
     {
         const auto centre = 8 + static_cast<int>(i) * eqCell + eqCell / 2;
-        eqBounds[i] = {centre - 14, eqTop, 28, eqHeight};
+        eqBounds[i] = {centre - 17, eqTop, 34, eqHeight};
         eqSliders[i]->setBounds(eqBounds[i]);
     }
 }
