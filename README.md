@@ -7,6 +7,8 @@ RapReady One is a single-knob, real-time vocal cleanup processor for bedroom rap
 - a **Windows file renderer** for repeatable automated tests; and
 - a **macOS Audio Unit (AUv2)** for Logic Pro, plus macOS VST3 and standalone builds.
 
+macOS builds are **universal** (`x86_64` + `arm64`) with a **Catalina 10.15** minimum. Intel Catalina uses the `x86_64` slice; Apple Silicon reports 11.0 because that hardware did not exist before Big Sur. Version 0.2.0 targeted macOS 11 and failed to open in Logic on 10.15 (`OpenAComponent -1`). Version **0.2.1** is the Catalina-compatible build.
+
 The product promise is deliberately **mix-ready vocal**, not automatic song mastering. A vocal insert cannot balance a beat, choose artistic EQ for every voice, or master a finished stereo mix.
 
 ## One knob
@@ -58,10 +60,21 @@ File cleanup accepts mono or stereo input and produces a latency-compensated 24-
 
 ## Logic Pro use
 
-1. Download and extract `RapReadyOne-macOS-universal.zip` on a Mac.
-2. Copy `RapReady One.component` to `~/Library/Audio/Plug-Ins/Components/`.
-3. Restart Logic, open **Logic Pro → Settings → Plug-in Manager**, find **Bedroom Labs / RapReady One**, and scan it.
+Works on **macOS Catalina 10.15.8 and later**, including Intel Macs. Catalina's last Logic Pro is **10.6.x** (Logic 10.7 needs macOS 11).
+
+1. Download and extract `RapReadyOne-macOS-universal.zip` on a Mac. Use **0.2.1 or newer**.
+2. Run `./Install-macOS.sh` from the extracted folder, or copy `RapReady One.component` to `~/Library/Audio/Plug-Ins/Components/`.
+3. Fully quit Logic (Command-Q) and reopen it. Open **Logic Pro → Settings → Plug-in Manager**, find **Bedroom Labs / RapReady One**, and click **Reset & Rescan Selection**. Plug-in Manager should show component version **0.2.1**.
 4. Insert it as an Audio FX plug-in on a mono or stereo vocal track.
+
+If validation reports `FATAL ERROR: OpenAComponent: result: -1` you are still on the 0.2.0 macOS 11-only binary. Replace the `.component`, then:
+
+```bash
+xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/RapReady\ One.component
+killall -9 AudioComponentRegistrar
+```
+
+Rescan again. Also remove any old copy from `/Library/Audio/Plug-Ins/Components/`.
 
 The AU uses the same compact futuristic interface, six saved themes, Advanced controls, and PREVIOUS/CURRENT audition as the Windows build. File drag-and-drop is intentionally a standalone-app feature; in Logic, place the AU on an audio track.
 
@@ -78,12 +91,19 @@ ctest --test-dir build -C Release --output-on-failure
 ```
 
 ```bash
-cmake -S . -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES='arm64;x86_64'
+cmake -S . -B build -G Xcode
 cmake --build build --config Release --parallel
 ctest --test-dir build -C Release --output-on-failure
+python3 tools/verify_macos_minos.py build/RapReadyOne_artefacts/Release/AU/*.component
 ```
 
-Automation runs deterministic DSP tests at multiple sample rates, `pluginval` strictness 5 on VST3, and Apple `auval` on the AU. Apple explicitly notes that `auval` does not judge DSP quality or replace host testing, so a real Logic session remains the last compatibility gate.
+CMake defaults macOS to Catalina `10.15` and a universal `arm64;x86_64` binary. Override only if you intend a different floor:
+
+```bash
+cmake -S . -B build -G Xcode -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_OSX_ARCHITECTURES='arm64;x86_64'
+```
+
+Automation runs deterministic DSP tests at multiple sample rates, `pluginval` strictness 5 on VST3, Apple `auval` on the AU, and an Intel-slice minos check so Catalina cannot silently regress. Apple explicitly notes that `auval` does not judge DSP quality or replace host testing, so a real Logic session remains the last compatibility gate.
 
 ## License
 

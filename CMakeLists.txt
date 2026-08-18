@@ -1,6 +1,15 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(RapReadyOne VERSION 0.2.0 LANGUAGES CXX)
+# Deployment target MUST be set before project() or the Xcode generator stamps
+# LC_BUILD_VERSION.minos from the host SDK (11.0+). That produces the Logic
+# auval failure on Catalina: Info.plist registers, OpenAComponent returns -1.
+# arm64 slices still report 11.0 because Apple Silicon starts at Big Sur.
+if(APPLE)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum macOS version (Catalina 10.15)")
+    set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Universal Intel + Apple Silicon")
+endif()
+
+project(RapReadyOne VERSION 0.2.1 LANGUAGES CXX)
 
 include(CTest)
 
@@ -8,6 +17,10 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
+if(APPLE)
+    set(CMAKE_XCODE_ATTRIBUTE_MACOSX_DEPLOYMENT_TARGET "${CMAKE_OSX_DEPLOYMENT_TARGET}")
+endif()
 
 include(FetchContent)
 FetchContent_Declare(
@@ -41,6 +54,7 @@ juce_add_plugin(RapReadyOne
     MICROPHONE_PERMISSION_TEXT "RapReady One uses the selected microphone for live vocal processing."
     AU_MAIN_TYPE kAudioUnitType_Effect
     VST3_CATEGORIES Fx Dynamics Filter
+    PLIST_TO_MERGE "${CMAKE_CURRENT_SOURCE_DIR}/resources/macos/Info.merge.plist"
 )
 
 juce_generate_juce_header(RapReadyOne)
@@ -133,4 +147,15 @@ if(BUILD_TESTING)
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/renderer_tail_test.py
                 $<TARGET_FILE:RapReadyRender>
     )
+endif()
+
+if(APPLE)
+    foreach(tgt IN ITEMS
+            RapReadyOne RapReadyOne_AU RapReadyOne_VST3 RapReadyOne_Standalone
+            RapReadyDSP RapReadyOffline RapReadyRender RapReadyTests)
+        if(TARGET ${tgt})
+            set_target_properties(${tgt} PROPERTIES
+                XCODE_ATTRIBUTE_MACOSX_DEPLOYMENT_TARGET "${CMAKE_OSX_DEPLOYMENT_TARGET}")
+        endif()
+    endforeach()
 endif()

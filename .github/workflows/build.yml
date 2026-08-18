@@ -21,9 +21,11 @@ jobs:
             os: windows-latest
             package: RapReadyOne-Windows-x64
           - name: macOS Universal
-            os: macos-latest
+            os: macos-15
             package: RapReadyOne-macOS-universal
     runs-on: ${{ matrix.os }}
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "10.15"
 
     steps:
       - uses: actions/checkout@v7
@@ -35,13 +37,22 @@ jobs:
 
       - name: Configure macOS universal
         if: runner.os == 'macOS'
-        run: cmake -S . -B build -G Xcode -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 -DCMAKE_OSX_ARCHITECTURES='arm64;x86_64'
+        run: cmake -S . -B build -G Xcode -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_OSX_ARCHITECTURES='arm64;x86_64'
 
       - name: Build
         run: cmake --build build --config Release --parallel 3
 
       - name: Run deterministic DSP tests
         run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Verify Catalina 10.15 x86_64 deployment target
+        if: runner.os == 'macOS'
+        run: |
+          python3 tools/verify_macos_minos.py \
+            "build/RapReadyOne_artefacts/Release/AU/RapReady One.component" \
+            "build/RapReadyOne_artefacts/Release/VST3/RapReady One.vst3" \
+            "build/RapReadyOne_artefacts/Release/Standalone/RapReady One.app"
+
 
       - name: Validate Windows VST3 with pluginval
         if: runner.os == 'Windows'
@@ -114,13 +125,9 @@ jobs:
           ditto build/RapReadyOne_artefacts/Release/VST3/*.vst3 "$stage/RapReady One.vst3"
           ditto "build/RapReadyOne_artefacts/Release/Standalone/RapReady One.app" "$stage/RapReady One.app"
           cp README.md RESEARCH.md LICENSE.md "$stage/"
-          cat > "$stage/INSTALL-macOS.txt" <<'EOF'
-          Copy RapReady One.component to ~/Library/Audio/Plug-Ins/Components/ and restart Logic.
-          This development build is ad-hoc signed, not Apple-notarized. If Gatekeeper quarantines this
-          artifact that you trust and built/downloaded from this repository, run:
-            xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/RapReady\ One.component
-          Then rescan Bedroom Labs / RapReady One in Logic Pro Plug-in Manager.
-          EOF
+          cp tools/INSTALL-macOS.txt "$stage/"
+          cp tools/Install-macOS.sh "$stage/"
+          chmod +x "$stage/Install-macOS.sh"
           ditto -c -k --sequesterRsrc --keepParent "$stage" "build/${{ matrix.package }}.zip"
 
       - name: Upload package
