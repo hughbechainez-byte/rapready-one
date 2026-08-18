@@ -63,6 +63,11 @@ def inspect(bundle: Path) -> None:
         ["otool", "-l", "-arch", "x86_64", str(binary)],
         text=True,
     )
+    if "LC_DYLD_CHAINED_FIXUPS" in otool:
+        raise SystemExit(
+            f"{bundle} x86_64 slice uses LC_DYLD_CHAINED_FIXUPS; "
+            "Catalina's dyld cannot load it (Logic OpenAComponent -1)"
+        )
     minos = extract_minos(otool)
     print(f"{bundle}: x86_64 minos={minos}")
     major, minor, _patch = parse_version(minos)
@@ -75,6 +80,31 @@ def inspect(bundle: Path) -> None:
 
 
 def main(argv: list[str]) -> int:
+    if len(argv) == 2 and argv[1] == "--self-test":
+        sample_ok = """
+Load command 1
+      cmd LC_BUILD_VERSION
+  cmdsize 32
+ platform 1
+    minos 10.15
+      sdk 15.5
+   ntools 1
+     tool 3
+  version 1115.7.3
+"""
+        sample_too_new = """
+Load command 1
+      cmd LC_BUILD_VERSION
+  cmdsize 32
+    minos 11.0
+      sdk 15.5
+"""
+        sample_chains = sample_ok + "\n      cmd LC_DYLD_CHAINED_FIXUPS\n"
+        assert extract_minos(sample_ok) == "10.15"
+        assert parse_version(extract_minos(sample_too_new))[:2] > MAX_MINOS
+        assert "LC_DYLD_CHAINED_FIXUPS" in sample_chains
+        print("self-test ok")
+        return 0
     if len(argv) < 2:
         print("usage: verify_macos_minos.py <bundle> [bundle...]", file=sys.stderr)
         return 2

@@ -48,6 +48,7 @@ jobs:
       - name: Verify Catalina 10.15 x86_64 deployment target
         if: runner.os == 'macOS'
         run: |
+          python3 tools/verify_macos_minos.py --self-test
           python3 tools/verify_macos_minos.py \
             "build/RapReadyOne_artefacts/Release/AU/RapReady One.component" \
             "build/RapReadyOne_artefacts/Release/VST3/RapReady One.vst3" \

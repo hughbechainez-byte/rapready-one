@@ -86,7 +86,7 @@ class RapReadyOneAudioProcessorEditor final : public juce::AudioProcessorEditor,
     juce::ProgressBar progressBar{displayedProgress};
     juce::TooltipWindow tooltipWindow{this, 450};
     std::unique_ptr<juce::FileChooser> fileChooser;
-    std::jthread renderThread;
+    std::thread renderThread;
     std::atomic<bool> renderCancelRequested{false};
     std::atomic<bool> rendering{false};
     std::atomic<float> renderProgress{0.0f};

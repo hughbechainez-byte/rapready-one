@@ -20,6 +20,16 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 if(APPLE)
     set(CMAKE_XCODE_ATTRIBUTE_MACOSX_DEPLOYMENT_TARGET "${CMAKE_OSX_DEPLOYMENT_TARGET}")
+    # Always emit both slices; "My Mac" Debug otherwise builds native-only and
+    # Catalina (Intel-only) cannot load an arm64 AU.
+    set(CMAKE_XCODE_ATTRIBUTE_ONLY_ACTIVE_ARCH NO)
+    include(CheckLinkerFlag)
+    # Xcode 15+ chained fixups need macOS 11. Deployment 10.15 should disable
+    # them; keep the flag so Catalina dyld is not handed LC_DYLD_CHAINED_FIXUPS.
+    check_linker_flag(CXX "-Wl,-no_fixup_chains" RAPREADY_HAS_NO_FIXUP_CHAINS)
+    if(RAPREADY_HAS_NO_FIXUP_CHAINS)
+        add_link_options(-Wl,-no_fixup_chains)
+    endif()
 endif()
 
 include(FetchContent)
