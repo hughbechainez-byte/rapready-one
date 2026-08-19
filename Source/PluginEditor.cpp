@@ -274,10 +274,7 @@ RapReadyOneAudioProcessorEditor::~RapReadyOneAudioProcessorEditor()
     fileChooser.reset();
     renderCancelRequested.store(true);
     if (renderThread.joinable())
-    {
-        renderThread.request_stop();
         renderThread.join();
-    }
     audioProcessor.clearAuditionSnapshot();
     advancedPanel.onAuditionChanged = nullptr;
     advancedPanel.onComparisonModeChanged = nullptr;
@@ -580,13 +577,13 @@ void RapReadyOneAudioProcessorEditor::startFileRender(const juce::File& inputFil
     repaint();
 
     const auto safeThis = juce::Component::SafePointer<RapReadyOneAudioProcessorEditor>(this);
-    renderThread = std::jthread([this, safeThis, request](std::stop_token stopToken)
+    renderThread = std::thread([this, safeThis, request]
     {
         const auto result = rapready::renderAudioFile(
             request,
-            [this, &stopToken]
+            [this]
             {
-                return stopToken.stop_requested() || renderCancelRequested.load();
+                return renderCancelRequested.load();
             },
             [this](float progress) { renderProgress.store(progress); });
         juce::MessageManager::callAsync([safeThis, result]
@@ -602,8 +599,6 @@ void RapReadyOneAudioProcessorEditor::cancelFileRender()
     if (!rendering.load())
         return;
     renderCancelRequested.store(true);
-    if (renderThread.joinable())
-        renderThread.request_stop();
     cancelButton.setEnabled(false);
     setRenderStatus("CANCELLING // partial output will be discarded");
 }

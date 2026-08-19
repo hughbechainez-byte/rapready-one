@@ -1,0 +1,44 @@
+RapReady One — macOS install (Catalina 10.15.8 and later)
+=========================================================
+
+Minimum OS: macOS Catalina 10.15.8
+Architectures: universal (x86_64 + arm64)
+Logic Pro on Catalina: 10.6.x (Logic 10.7+ needs macOS 11)
+
+Quick install
+-------------
+1. Double-click Install-macOS.sh in Terminal, or run:
+     chmod +x Install-macOS.sh
+     ./Install-macOS.sh
+2. Fully quit Logic Pro (Command-Q), then reopen it.
+3. Logic Pro → Settings (or Preferences) → Plug-in Manager.
+4. Find Bedroom Labs / RapReady One and click Reset & Rescan Selection.
+
+Manual install
+--------------
+1. Copy "RapReady One.component" to:
+     ~/Library/Audio/Plug-Ins/Components/
+2. If you also want the VST3, copy "RapReady One.vst3" to:
+     ~/Library/Audio/Plug-Ins/VST3/
+3. Clear Gatekeeper quarantine on files you trust from this project:
+     xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/RapReady\ One.component
+     xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/RapReady\ One.vst3
+4. Refresh AudioUnit registration:
+     killall -9 AudioComponentRegistrar
+5. Restart Logic and rescan Bedroom Labs / RapReady One.
+
+If Plug-in Manager says "couldn't be opened"
+--------------------------------------------
+That error (auval OpenAComponent -1) on 0.2.0 was caused by a macOS 11
+minimum OS version. This 0.2.1 build targets Catalina 10.15.
+
+Still failing after installing 0.2.1:
+- Confirm you replaced the old .component (version in Plug-in Manager should read 0.2.1).
+- Remove the old copy from both:
+    ~/Library/Audio/Plug-Ins/Components/
+    /Library/Audio/Plug-Ins/Components/
+- On Catalina, use Logic Pro 10.6.x. Logic 10.7 will not launch on 10.15.
+- This development build is ad-hoc signed, not Apple-notarized. Run the
+  xattr command above if macOS quarantined the download.
+
+Standalone app: RapReady One.app (live mic + drag-and-drop file cleanup).
